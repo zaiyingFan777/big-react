@@ -143,5 +143,39 @@ conventional 规范集意义：
 配置 tsconfig.json：
 
 ```
+{
+	"compileOnSave": true,
+	"compilerOptions": {
+		"target": "ESNext",
+		"useDefineForClassFields": true,
+		"module": "ESNext",
+		"lib": ["ESNext", "DOM"],
+		"moduleResolution": "Node",
+		"strict": true,
+		"sourceMap": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"esModuleInterop": true,
+		"noEmit": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noImplicitReturns": false,
+		"skipLibCheck": true,
+		"baseUrl": "./packages"
+	}
+}
+```
 
+6. 选择项目的打包工具
+
+比较不同打包工具的区别 参考资料：Overview | Tooling.Report(https://bundlers.tooling.report/)我们要开发的项目的特点：
+
+- 是库，而不是业务项目
+- 希望工具尽可能简洁、打包产物可读性高
+- 原生支持 ESM
+
+所以选择 rollup，安装：
+
+```
+pnpm i -D -w rollup
 ```
