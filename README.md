@@ -2,9 +2,9 @@
 
 ## 项目搭建
 
-1.我们项目采用 Mono-repo 的形式：Mono-repo 可以很方便的协同管理不同独立的库的生命周期，相对应的，会有更高的操作复杂度。
+1. 我们项目采用 Mono-repo 的形式：Mono-repo 可以很方便的协同管理不同独立的库的生命周期，相对应的，会有更高的操作复杂度。
 
-2.我们选择 pnpm 作为我们的打包工具
+2. 我们选择 pnpm 作为我们的打包工具
 
 pnpm 初始化
 
@@ -15,7 +15,7 @@ pnpm init
 
 初始化 pnpm-workspace.yaml(https://pnpm.io/zh/pnpm-workspace_yaml)
 
-3.定义开发规范
+3. 定义开发规范
 
 代码规范：lint 工具 eslint
 
@@ -47,7 +47,7 @@ ps: 既依赖又不需要安装的库作为你的 peer dependencies，因此 pnp
 pnpm i -D -w @typescript-eslint/eslint-plugin
 ```
 
-4.处理代码风格 prettier
+4. 处理代码风格 prettier
 
 ```
 pnpm i prettier -D -w
