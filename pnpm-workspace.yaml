@@ -1,0 +1,2 @@
+packages:
+  - 'packages/*' # 所有项目都在根目录的packages下
