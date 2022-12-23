@@ -2,9 +2,9 @@
 
 ## 项目搭建
 
-1. 我们项目采用 Mono-repo 的形式：Mono-repo 可以很方便的协同管理不同独立的库的生命周期，相对应的，会有更高的操作复杂度。
+### 1. 我们项目采用 Mono-repo 的形式：Mono-repo 可以很方便的协同管理不同独立的库的生命周期，相对应的，会有更高的操作复杂度。
 
-2. 我们选择 pnpm 作为我们的打包工具
+### 2. 我们选择 pnpm 作为我们的打包工具
 
 pnpm 初始化
 
@@ -15,7 +15,7 @@ pnpm init
 
 初始化 pnpm-workspace.yaml(https://pnpm.io/zh/pnpm-workspace_yaml)
 
-3. 定义开发规范
+### 3. 定义开发规范
 
 代码规范：lint 工具 eslint
 
@@ -47,7 +47,7 @@ ps: 既依赖又不需要安装的库作为你的 peer dependencies，因此 pnp
 pnpm i -D -w @typescript-eslint/eslint-plugin
 ```
 
-4. 处理代码风格 prettier
+### 4. 处理代码风格 prettier
 
 ```
 pnpm i prettier -D -w
@@ -83,7 +83,7 @@ pnpm i eslint-config-prettier eslint-plugin-prettier -D -w
 "lint": "eslint --ext .ts,.jsx,.tsx --fix --quiet ./packages"
 ```
 
-5. commit 规范检查
+### 5. commit 规范检查
 
 安装 husky，用于拦截 commit 命令：
 
@@ -166,7 +166,7 @@ conventional 规范集意义：
 }
 ```
 
-6. 选择项目的打包工具
+### 6. 选择项目的打包工具
 
 比较不同打包工具的区别 参考资料：Overview | Tooling.Report(https://bundlers.tooling.report/)我们要开发的项目的特点：
 
@@ -178,4 +178,93 @@ conventional 规范集意义：
 
 ```
 pnpm i -D -w rollup
+```
+
+## React 项目结构：
+
+### 1. 项目结构
+
+- react（宿主环境无关的公用方法）
+- react-reconciler（协调器的实现，宿主环境无关）
+- 各种宿主环境的包
+- shared（公用辅助方法，宿主环境无关）
+
+ps: react 等包里的 package.json
+
+```
+// main入口文件对应了commonjs规范，但是我们用rollup打包是原生支持ESModule的，因此module
+// "main": "index.js",
+// 在Mono-repo中我们的react引入了shared的包，将我们的shared定义为我们的react包的依赖
+"dependencies": {
+	"shared": "workspace:*"
+},
+```
+
+编译时的 babel 将 jsx 帮我们转换成了 React.createElement
+
+```
+// react17之前
+<div>123</div>
+=> jsx转换
+React.createElement("div", null, 123);
+
+// react17之后
+<div id="333">123</div>
+=> jsx转换
+import { jsx as _jsx } from "react/jsx-runtime";
+/*#_PURE_*/ _jsx("div", {
+	id: "333",
+	children: "123"
+});
+```
+
+### 2. 运行时，jsx 方法或者 React.createElement 方法的执行(包括 dev、prod 两个环境)，因此就需要实现这两个方法
+
+编译时由 babel 编译实现，我们来实现运行时，工作量包括：
+
+- 实现 jsx 方法
+- 实现打包流程
+- 实现调试打包结果的环境
+
+### 3. 实现打包流程
+
+对应上述两 3 方法，打包对应文件：
+
+- react/jsx-dev-runtime.js（dev 环境）
+
+-react/jsx-rumtime.js（prod 环境）
+
+-React
+
+我们的打包脚本都在 scripts 目录下。
+
+打包流程中需要安装的 rollup plugin 与 node 包：
+
+```
+pnpm i -D -w rimraf rollup-plugin-generate-package-json rollup-plugin-typescript2 @rollup/plugin-commonjs
+```
+
+打包出来的 dist 目录里需要 package.json 文件，安装以下插件
+
+```
+pnpm i -D -w rollup-plugin-generate-package-json
+```
+
+### 4. 打包测试流程
+
+![](assets/link-des.png)
+
+这种方式的优点：可以模拟实际项目引用 React 的情况
+
+缺点：对于我们当前开发 big-react 来说，略显繁琐。对于开发过程，更期望的是热更新效果。
+
+```
+// 第一步，全局node_modules下的react指向了当前的dist目录下的react包
+cd dist/node_modules/react
+pnpm link --global(报错的话 先pnpm setup，重启终端即可)
+
+// 第二步，使用create-react-app创建新的目录
+npx create-react-app react-demo
+cd react-demo
+pnpm link react --global(将项目中的react变为全局node_modules下的react)
 ```
