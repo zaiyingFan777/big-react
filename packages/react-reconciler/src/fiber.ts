@@ -2,6 +2,7 @@
 import { Props, Key, Ref } from 'shared/ReactTypes';
 import { WorkTag } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
+import { Container } from 'hostConfig';
 
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
@@ -20,6 +21,9 @@ export class FiberNode {
 	index: number;
 
 	memoizedProps: Props | null;
+	memoizedState: any;
+	updateQueue: unknown;
+
 	alternate: FiberNode | null;
 	flags: Flags;
 
@@ -29,7 +33,7 @@ export class FiberNode {
 		// FiberNode实例属性
 		this.tag = tag;
 		this.key = key;
-		// 对于HostComponent <div></div> 而言。stateNode就是报错的div的Dom
+		// 对于HostComponent <div></div> 而言。stateNode就是保存的div的Dom
 		this.stateNode = null;
 		// 类型，FunctionComponent tag为0，这个type就是() => {}函数本身
 		this.type = null;
@@ -50,9 +54,59 @@ export class FiberNode {
 		// 作为工作单元
 		this.pendingProps = pendingProps; // 工作单元刚开始工作的时候的props是什么
 		this.memoizedProps = null; // 工作单元结工作完确定的props是什么
+		this.updateQueue = null;
+		this.memoizedState = null;
+
 		// 如果当前的为current，alternate代表的是workInProgress，如果为workInProgress，alternate为current
 		this.alternate = null;
+
 		// 统称为副作用，标记：删除、插入
 		this.flags = NoFlags;
 	}
 }
+
+// 当前应用统一的根节点fiberRootNode
+// 需要参数，ReactDOM.createRoot(rootElement).render(或者老版本的ReactDOM.render) rootElement就是container参数
+// fiberRootNode.current = hostRootFiber，hostRootFiber.stateNode = fiberRootNode;
+// hostRootFiber.child = App，App.return = hostRootFiber;
+export class FiberRootNode {
+	container: Container; // 有可能是domElement或者其他宿主环境的元素
+	current: FiberNode;
+	finishedWork: FiberNode | null; // 指向了整个更新完成之后的hostRootFiber
+	constructor(container: Container, hostRootFiber: FiberNode) {
+		this.container = container;
+		this.current = hostRootFiber;
+		hostRootFiber.stateNode = this;
+		this.finishedWork = null;
+	}
+}
+
+// 将fiberRootNode变为fiberNode
+export const createWorkInProgress = (
+	current: FiberNode,
+	pendingProps: Props
+): FiberNode => {
+	// 双缓存机制，我每次都获取跟我对应的另一个fiberNode
+	let wip = current.alternate;
+
+	if (wip === null) {
+		// 首屏渲染 mount
+		wip = new FiberNode(current.tag, pendingProps, current.key);
+		wip.stateNode = current.stateNode;
+
+		wip.alternate = current;
+		current.alternate = wip;
+	} else {
+		// update
+		wip.pendingProps = pendingProps;
+		// 清除掉副作用
+		wip.flags = NoFlags;
+	}
+	wip.type = current.type;
+	wip.updateQueue = current.updateQueue;
+	wip.child = current.child;
+	wip.memoizedProps = current.memoizedProps;
+	wip.memoizedState = current.memoizedState;
+
+	return wip;
+};

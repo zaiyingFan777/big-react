@@ -13,3 +13,8 @@ export interface ReactElementType {
 	props: Props;
 	__mark: string;
 }
+
+// action
+// this.setState({xx: 1}) 中的 {xx: 1}
+// this.setState(({xx: 1}) => {xx: 2}) 中的 ({xx: 1}) => {xx: 2}
+export type Action<State> = State | ((preState: State) => State);

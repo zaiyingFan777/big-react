@@ -1,17 +1,47 @@
 // 完整的工作循环，调用beginWork和completeWork
 import { beginWork } from './beginWork';
 import { completeWork } from './completeWork';
-import { FiberNode } from './fiber';
+import { FiberNode, FiberRootNode, createWorkInProgress } from './fiber';
+import { HostRoot } from './workTags';
 
 // 全局的指针指向当前正在工作的fiberNode
 let workInProgress: FiberNode | null = null;
 
 // 执行初始化的操作
-function prepareFreshStack(fiber: FiberNode) {
-	workInProgress = fiber;
+function prepareFreshStack(root: FiberRootNode) {
+	// FiberRootNode不是一个普通的fiberNode不能直接当作workInProgress，因此需要一个方法将fiberRootNode变为fiberNode
+	workInProgress = createWorkInProgress(root.current, {});
 }
 
-function renderRoot(root: FiberNode) {
+// 连接ReactDOM.createRoot().render()中的render调用的updateContainer方法与renderRoot方法
+export function scheduleUpdateOnFiber(fiber: FiberNode) {
+	// TODO调度功能
+	// 1.首屏渲染传进来的时hostRootFiber，2.对于其他更新流程传入的是class component或者function component对应的fiber
+
+	// 根据当前fiber一直往上遍历到 fiberRootNode
+	// 拿到fiberRootNode
+	const root = markUpdateFromFiberToRoot(fiber);
+	renderRoot(root);
+}
+
+// 根据当前fiber一直往上遍历到 fiberRootNode
+function markUpdateFromFiberToRoot(fiber: FiberNode) {
+	let node = fiber;
+	let parent = node.return;
+	while (parent !== null) {
+		node = parent;
+		parent = node.return;
+	}
+	// 普通fiber跳出循环后,到达了hostRootFiber
+	if (node.tag === HostRoot) {
+		return node.stateNode;
+	}
+	return null;
+}
+
+// renderRoot会执行更新的过程(更新流程)
+// 调用renderRoot的是触发更新的api: 1.首屏渲染：ReactDOM.createRoot().render(或者老版本的ReactDOM.render) 2.this.setState 3.useState的dispatch方法
+function renderRoot(root: FiberRootNode) {
 	prepareFreshStack(root);
 
 	// do while无论如何都会先执行一次循环体
