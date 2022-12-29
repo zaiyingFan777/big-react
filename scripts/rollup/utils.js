@@ -5,6 +5,7 @@ import fs from 'fs';
 // plugins
 import ts from 'rollup-plugin-typescript2';
 import cjs from '@rollup/plugin-commonjs';
+import replace from '@rollup/plugin-replace';
 
 // 先找到pkgPath，就是根目录下的packages
 const pkgPath = path.resolve(__dirname, '../../packages');
@@ -31,9 +32,12 @@ export function getPackageJSON(pkgName) {
 
 // 获取所有的基础的插件
 export function getBaseRollupPlugins({
+	alias = {
+		__DEV__: true
+	},
 	typescript = {}
 } = {}) {
 	// 解析commonjs规范
 	// 将源码中的ts转为js的ts的插件
-	return [cjs(), ts(typescript)];
+	return [replace(alias), cjs(), ts(typescript)];
 }

@@ -10,6 +10,7 @@ let workInProgress: FiberNode | null = null;
 // 执行初始化的操作
 function prepareFreshStack(root: FiberRootNode) {
 	// FiberRootNode不是一个普通的fiberNode不能直接当作workInProgress，因此需要一个方法将fiberRootNode变为fiberNode
+	// 为我们的hostRootFiber创建一个workInProgress
 	workInProgress = createWorkInProgress(root.current, {});
 }
 
@@ -39,6 +40,9 @@ function markUpdateFromFiberToRoot(fiber: FiberNode) {
 	return null;
 }
 
+// mount流程：1.生成wip fiberNode树 2.标记副作用的flags
+// 更新流程的步骤：递: beginWork 归: completeWork
+
 // renderRoot会执行更新的过程(更新流程)
 // 调用renderRoot的是触发更新的api: 1.首屏渲染：ReactDOM.createRoot().render(或者老版本的ReactDOM.render) 2.this.setState 3.useState的dispatch方法
 function renderRoot(root: FiberRootNode) {
@@ -50,10 +54,21 @@ function renderRoot(root: FiberRootNode) {
 			workLoop();
 			break;
 		} catch (e) {
-			console.warn('workLoop发生错误', e);
+			if (__DEV__) {
+				// 开发环境下的包提示报错信息，生产环境不会 __DEV__编译为false, 开发环境编译为true
+				console.warn('workLoop发生错误', e);
+			}
 			workInProgress = null;
 		}
 	} while (true);
+
+	// 获取工作完毕后的wip fiberNode树
+	const finishedWork = root.current.alternate;
+	root.finishedWork = finishedWork;
+
+	// 执行commit操作
+	// wip fiberNode树以及树中的flags 执行具体的dom操作
+	commitRoot(root);
 }
 
 function workLoop() {
