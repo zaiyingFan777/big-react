@@ -1,4 +1,5 @@
 import {
+	Container,
 	appendInitialChild,
 	createInstance,
 	createTextInstance
@@ -16,11 +17,12 @@ export const completeWork = (wip: FiberNode) => {
 	switch (wip.tag) {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
-				// update
+				// update111
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM
-				const instance = createInstance(wip.type, newProps); // 创建dom节点
+				// const instance = createInstance(wip.type, newProps); // 创建dom节点
+				const instance = createInstance(wip.type); // 创建dom节点
 				// 2.将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				wip.stateNode = instance;
@@ -56,7 +58,7 @@ export const completeWork = (wip: FiberNode) => {
 // 对于离屏dom，插入到h3的是A中的div
 
 // <h3><A/><A/></h3> 不光要插入A，还需要插入A的兄弟节点
-function appendAllChildren(parent: FiberNode, wip: FiberNode) {
+function appendAllChildren(parent: Container, wip: FiberNode) {
 	let node = wip.child;
 
 	// 递归插入

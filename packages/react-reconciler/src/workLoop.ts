@@ -1,7 +1,9 @@
 // 完整的工作循环，调用beginWork和completeWork
 import { beginWork } from './beginWork';
+import { commitMutationEffects } from './commitWork';
 import { completeWork } from './completeWork';
 import { FiberNode, FiberRootNode, createWorkInProgress } from './fiber';
+import { MutationMask, NoFlags } from './fiberFlags';
 import { HostRoot } from './workTags';
 
 // 全局的指针指向当前正在工作的fiberNode
@@ -71,6 +73,53 @@ function renderRoot(root: FiberRootNode) {
 	commitRoot(root);
 }
 
+// commit阶段的3个子阶段
+// beforeMutation阶段
+// mutation阶段
+// layout阶段
+
+// 当前commit阶段要执行的任务：
+// 1.fiber树的切换(将生成的wip渲染到页面上后，将wip变为current，下次有更新又会生成一颗新的wip) 发生在mutation完成 layout之前
+// 2.执行Placement对应操作
+function commitRoot(root: FiberRootNode) {
+	const finishedWork = root.finishedWork; // wip 根节点<App/>即hostRootFiber对应的wip
+
+	if (finishedWork === null) {
+		return;
+	}
+
+	if (__DEV__) {
+		console.warn('commit阶段开始', finishedWork);
+	}
+
+	// 重置
+	root.finishedWork = null;
+
+	// 判断是否存在3个子阶段需要执行的操作
+	// 1.root flags 2.root subtreeFlags
+	const subtreeHasEffect =
+		(finishedWork.subtreeFlags & MutationMask) !== NoFlags; // 我有插入操作 a = 0; a |= 2;（a为2） a & MutationMask(22) => 2，如果我没有标记 0 & 22 => 0(NoFlags)
+	const rootHasEffect = (finishedWork.flags & MutationMask) !== NoFlags;
+
+	// root的subtreeFlags或者flags是否包含MutationMask指定的flag，如果包含，代表当前存在mutation执行的操作
+	if (subtreeHasEffect || rootHasEffect) {
+		// beforeMutation阶段
+
+		// mutation阶段 Placement
+		commitMutationEffects(finishedWork);
+		// fiber树的切换
+		root.current = finishedWork;
+
+		// layout阶段
+	} else {
+		// 不存在对应的操作
+		// fiber树的切换
+		root.current = finishedWork;
+	}
+}
+
+// beginWork
+// completeWork
 function workLoop() {
 	while (workInProgress !== null) {
 		performUnitOfWork(workInProgress);
@@ -96,7 +145,7 @@ function completeUnitOfWork(fiber: FiberNode) {
 	let node: FiberNode | null = fiber;
 
 	do {
-		completeWork(fiber);
+		completeWork(node);
 		const sibling = node.sibling;
 
 		if (sibling !== null) {
