@@ -254,6 +254,8 @@ pnpm i -D -w rollup-plugin-generate-package-json
 
 ![](assets/link-des.png)
 
+#### 第一种调试方式--打包调试
+
 这种方式的优点：可以模拟实际项目引用 React 的情况
 
 缺点：对于我们当前开发 big-react 来说，略显繁琐。对于开发过程，更期望的是热更新效果。
@@ -267,4 +269,42 @@ pnpm link --global(报错的话 先pnpm setup，重启终端即可)
 npx create-react-app react-demo
 cd react-demo
 pnpm link react --global(将项目中的react变为全局node_modules下的react)
+```
+
+#### 第二种调试方式--vite 实时调试
+
+采用 vite 的实时调试，他的好处是「实时看到源码运行效果」。
+
+创建 vite 项目：
+
+```
+// 在big-react根目录下执行
+pnpm create vite
+
+// 选择了如下
+√ Project name: ... demos
+√ Select a framework: » React
+√ Select a variant: » TypeScript
+
+cd demos
+pnpm install
+pnpm run dev
+```
+
+使用 vite 而不是 webpack 作为 demo 调试的原因：
+
+1. 在开发阶段编译速度快于 webpack
+2. vite 的插件体系与 rollup 兼容
+
+```
+big-react中package.json
+// force每次重新编译我们的demo都会重新预编译，如果不配置，就会将依赖的react，react-dom缓存，达不到热更新的效果
+"demo": "vite serve demos/test-fc --config scripts/vite/vite.config.js --force"
+
+// vite的react中的配置在这里配置，然后再pnpm i
+"typescript": "^4.9.4",
+"@types/react": "^18.0.26",
+"@types/react-dom": "^18.0.9",
+"@vitejs/plugin-react": "^3.0.0",
+"vite": "^4.0.0"
 ```

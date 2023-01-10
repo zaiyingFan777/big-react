@@ -3,8 +3,14 @@
 import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { UpdateQueue, processUpdateQueue } from './updateQueue';
-import { HostComponent, HostRoot, HostText } from './workTags';
+import {
+	FunctionComponent,
+	HostComponent,
+	HostRoot,
+	HostText
+} from './workTags';
 import { reconcileChildFibers, mountChildFibers } from './childFibers';
+import { renderWithHooks } from './fiberHooks';
 
 // 对于如下结构的reactElement：
 // <A>
@@ -32,6 +38,8 @@ export const beginWork = (wip: FiberNode) => {
 			// hostText没有beginWork工作流程（因为他没有子节点）
 			// <p>唱跳Rap</p> 唱跳Rap文本节点对应的就是hostText类型，hostText没有子节点
 			return null;
+		case FunctionComponent:
+			return updateFunctionComponent(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型');
@@ -40,6 +48,17 @@ export const beginWork = (wip: FiberNode) => {
 	}
 	return null;
 };
+
+// 函数组件
+function updateFunctionComponent(wip: FiberNode) {
+	// App的children就是img组件，如何得到img组件，调用App()组件即可
+	// function App() {
+	// 	return <img/>;
+	// }
+	const nextChildren = renderWithHooks(wip);
+	reconcileChildren(wip, nextChildren);
+	return wip.child;
+}
 
 // 1.计算状态的最新值
 // 2.创造子fiberNode
