@@ -20,6 +20,7 @@ import { reconcileChildFibers, mountChildFibers } from './childFibers';
 // 不包含与「属性变化」相关的flag：Update
 // <img title="鸡" /> -> <img title="你太美" />
 
+// 备注：对于不同类型的 fiber，state 对他的概念不同。  对于FC，state是 hooks链表， 对于 HostRoot， state 是 挂载的组件， 对于 ClassComponent，state是 状态
 export const beginWork = (wip: FiberNode) => {
 	// 比较ReactElement与fiberNode对比，返回子fiberNode
 	switch (wip.tag) {
