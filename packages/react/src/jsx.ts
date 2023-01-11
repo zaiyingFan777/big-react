@@ -29,6 +29,15 @@ const ReactElement = function (
 	return element;
 };
 
+// isValidElement 是否是合法的ReactElement
+export function isValidElement(object: any) {
+	return (
+		typeof object === 'object' &&
+		object !== null &&
+		object.$$typeof === REACT_ELEMENT_TYPE
+	);
+}
+
 // jsx方法
 // 只是积累: function a(x, y, ...z) {console.log(x, y, z)} a(1) => 1 undefined []，a(1, 2) => 1 2 [], a(1,2,3) => 1 2 [3]
 export const jsx = function (

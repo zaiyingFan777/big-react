@@ -14,7 +14,7 @@ export default [
 		input: `${pkgPath}/${module}`, // big-react\packages\react\index.ts
 		output: {
 			file: `${pkgDistPath}/index.js`,
-			name: 'index.js',
+			name: 'React',
 			format: 'umd' // umd格式可以兼容esmodule和commonjs两种格式
 		},
 		plugins: [
@@ -37,13 +37,13 @@ export default [
 			// jsx-runtime，prod
 			{
 				file: `${pkgDistPath}/jsx-runtime.js`,
-				name: 'jsx-runtime.js',
+				name: 'jsx-runtime',
 				format: 'umd'
 			},
 			// jsx-dev-runtime，dev
 			{
 				file: `${pkgDistPath}/jsx-dev-runtime.js`,
-				name: 'jsx-dev-runtime.js',
+				name: 'jsx-dev-runtime',
 				format: 'umd'
 			}
 		],

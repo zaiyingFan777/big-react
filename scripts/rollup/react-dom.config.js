@@ -17,13 +17,13 @@ export default [
 			// react17以及17之前，react-dom来自"ReactDOM"
 			{
 				file: `${pkgDistPath}/index.js`,
-				name: 'index.js',
+				name: 'ReactDOM',
 				format: 'umd' // umd格式可以兼容esmodule和commonjs两种格式
 			},
 			// react18之后 react-dom来自"ReactDOM/client"
 			{
 				file: `${pkgDistPath}/client.js`,
-				name: 'client.js',
+				name: 'client',
 				format: 'umd' // umd格式可以兼容esmodule和commonjs两种格式
 			}
 		],
@@ -54,5 +54,18 @@ export default [
 				})
 			})
 		]
+	},
+	// react-test-utils
+	{
+		input: `${pkgPath}/test-utils.ts`, // big-react\packages\react-dom\test-utils.ts
+		output: [
+			{
+				file: `${pkgDistPath}/test-utils.js`,
+				name: 'testUtils',
+				format: 'umd' // umd格式可以兼容esmodule和commonjs两种格式
+			}
+		],
+		external: ['react-dom', 'react'], // 外部依赖
+		plugins: getBaseRollupPlugins()
 	}
 ];
