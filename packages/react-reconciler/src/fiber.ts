@@ -21,6 +21,8 @@ export class FiberNode {
 	index: number;
 
 	memoizedProps: Props | null;
+	// 保存hooks的数据：指向hooks(useState、useEffect)的单向链表的第0个hooks，hooks连接通过next字段
+	// 因此调用的hooks的顺序不能变
 	memoizedState: any;
 	updateQueue: unknown;
 
