@@ -108,6 +108,11 @@ function commitRoot(root: FiberRootNode) {
 		// mutation阶段 Placement
 		commitMutationEffects(finishedWork);
 		// fiber树的切换
+		// !!!注意，初次mount的时候，hostRootFiber.alternate就是workInProgress，我们先给workInProgress构建出来一整棵树，然后在commit过程切换，将root.current变为workInProgress成为了current，
+		// 这时候current.alternate就变味了最初没有子节点没有被处理的hostRootFiber
+		// !!!注意，第一次update调用setState的时候，hostRootFiber(current)的alternate(child为null)是存在的，然后createWorkInProgress wip是存在的，但是他的可以复用的子节点useFiber->createWorkInProgress 子节点的alternate都为null(这种仅限于更新内容没有删除新增操作)，需要在createWorkInProgress重新建立FiberNode
+		// !!!注意，第二次update调用setState的时候，只要是更新，所有的current的alternate都是可以复用的就不会再执行createWorkInProgress
+		// TODO
 		root.current = finishedWork;
 
 		// layout阶段
@@ -129,7 +134,7 @@ function workLoop() {
 function performUnitOfWork(fiber: FiberNode) {
 	// next可能是子fiber或者null
 	const next = beginWork(fiber);
-	// 工作完更改状态
+	// 工作完更改状态，将pendingProps赋值给memoizedProps
 	fiber.memoizedProps = fiber.pendingProps;
 
 	if (next === null) {

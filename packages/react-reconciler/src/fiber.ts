@@ -27,8 +27,11 @@ export class FiberNode {
 	updateQueue: unknown;
 
 	alternate: FiberNode | null;
+
+	// 副作用
 	flags: Flags;
 	subtreeFlags: Flags; // 子树中的状态
+	deletions: FiberNode[] | null;
 
 	// key ReactElement key
 	// pendingProps fibernode接下来有哪些prop需要改变
@@ -56,7 +59,7 @@ export class FiberNode {
 
 		// 作为工作单元
 		this.pendingProps = pendingProps; // 工作单元刚开始工作的时候的props是什么
-		this.memoizedProps = null; // 工作单元结工作完确定的props是什么
+		this.memoizedProps = null; // 工作单元结束工作完后确定的props是什么
 		this.updateQueue = null;
 		this.memoizedState = null;
 
@@ -66,6 +69,7 @@ export class FiberNode {
 		// 统称为副作用，标记：删除、插入
 		this.flags = NoFlags;
 		this.subtreeFlags = NoFlags;
+		this.deletions = null;
 	}
 }
 
@@ -106,6 +110,7 @@ export const createWorkInProgress = (
 		// 清除掉副作用
 		wip.flags = NoFlags;
 		wip.subtreeFlags = NoFlags;
+		wip.deletions = null;
 	}
 	wip.type = current.type;
 	wip.updateQueue = current.updateQueue;

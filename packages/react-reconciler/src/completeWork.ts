@@ -11,7 +11,12 @@ import {
 	HostRoot,
 	HostText
 } from './workTags';
-import { NoFlags } from './fiberFlags';
+import { NoFlags, Update } from './fiberFlags';
+
+// 标记更新的方法
+function markUpdate(fiber: FiberNode) {
+	fiber.flags |= Update;
+}
 
 export const completeWork = (wip: FiberNode) => {
 	// 递归中的归阶段
@@ -22,7 +27,9 @@ export const completeWork = (wip: FiberNode) => {
 	switch (wip.tag) {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
-				// update111
+				// update
+				// 属性变化
+				// className a => b
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM
@@ -37,6 +44,11 @@ export const completeWork = (wip: FiberNode) => {
 		case HostText:
 			if (current !== null && wip.stateNode) {
 				// update
+				const oldText = current.memoizedProps.content; // 老的文本
+				const newText = newProps.content; // 新的文本
+				if (oldText !== newText) {
+					markUpdate(wip);
+				}
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM 文本节点没有child
