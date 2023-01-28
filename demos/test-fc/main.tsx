@@ -6,9 +6,12 @@ console.log(import.meta.hot);
 
 function App() {
 	const [num, setNum] = useState(100);
-	window.setNum = setNum;
+	// window.setNum = setNum; // 测试setState
 
-	return num === 3 ? <Child /> : <div>{num}</div>;
+	// return num === 3 ? <Child /> : <div>{num}</div>;
+	// 测试click
+	// return <div onClick={() => setNum(num + 1)}>{num}</div>;
+	return <div onClickCapture={() => setNum(num + 1)}>{num}</div>;
 }
 
 function Child() {

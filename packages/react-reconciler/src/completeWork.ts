@@ -12,6 +12,7 @@ import {
 	HostText
 } from './workTags';
 import { NoFlags, Update } from './fiberFlags';
+import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 // 标记更新的方法
 function markUpdate(fiber: FiberNode) {
@@ -28,13 +29,20 @@ export const completeWork = (wip: FiberNode) => {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
 				// update
-				// 属性变化
-				// className a => b
+				// 1. props是否变化{onClick: xx} {onClick: xxx}
+				// 2. 变了Update flag
+				// FiberNode.updateQueue = [className, 'aaa', title, 'hahaha'] // 第n项是我们变化的属性，n+1项变化的是属性名。比如className是第n，第n+1就是变为了'aaa'
+				// 我们取的n就是key, n+1就是value，然后再hostConfig里面去更新dom属性
+				// className a => b，style属性 这都需要判断变没变
+
+				// 将事件回调保存在DOM中，通过以下两个时机对接：1.创建dom时，2.更新属性时
+				// 这里是更新dom
+				updateFiberProps(wip.stateNode, newProps);
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM
 				// const instance = createInstance(wip.type, newProps); // 创建dom节点
-				const instance = createInstance(wip.type); // 创建dom节点
+				const instance = createInstance(wip.type, newProps); // 创建dom节点
 				// 2.将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				wip.stateNode = instance;
@@ -44,7 +52,7 @@ export const completeWork = (wip: FiberNode) => {
 		case HostText:
 			if (current !== null && wip.stateNode) {
 				// update
-				const oldText = current.memoizedProps.content; // 老的文本
+				const oldText = current.memoizedProps?.content; // 老的文本
 				const newText = newProps.content; // 新的文本
 				if (oldText !== newText) {
 					markUpdate(wip);
