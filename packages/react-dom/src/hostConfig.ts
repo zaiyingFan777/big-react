@@ -30,6 +30,15 @@ export const appendInitialChild = (
 
 export const appendChildToContainer = appendInitialChild;
 
+// 在某个节点之前插入
+export function insertChildToContainer(
+	child: Instance,
+	container: Container,
+	before: Instance
+) {
+	container.insertBefore(child, before);
+}
+
 // commitWork中的提交更新的函数
 export function commitUpdate(fiber: FiberNode) {
 	switch (fiber.tag) {
