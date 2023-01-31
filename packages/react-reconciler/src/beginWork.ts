@@ -4,6 +4,7 @@ import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { UpdateQueue, processUpdateQueue } from './updateQueue';
 import {
+	Fragment,
 	FunctionComponent,
 	HostComponent,
 	HostRoot,
@@ -40,6 +41,8 @@ export const beginWork = (wip: FiberNode) => {
 			return null;
 		case FunctionComponent:
 			return updateFunctionComponent(wip);
+		case Fragment:
+			return updateFragment(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型');
@@ -48,6 +51,13 @@ export const beginWork = (wip: FiberNode) => {
 	}
 	return null;
 };
+
+// fragment组件
+function updateFragment(wip: FiberNode) {
+	const nextChildren = wip.pendingProps;
+	reconcileChildren(wip, nextChildren);
+	return wip.child;
+}
 
 // 函数组件
 function updateFunctionComponent(wip: FiberNode) {
@@ -64,7 +74,7 @@ function updateFunctionComponent(wip: FiberNode) {
 // 2.创造子fiberNode
 function updateHostRoot(wip: FiberNode) {
 	const baseState = wip.memoizedState; // 首屏渲染是不存在的
-	const updateQueue = wip.updateQueue as UpdateQueue<Element>;
+	const updateQueue = wip.updateQueue as UpdateQueue<ReactElementType>;
 	const pending = updateQueue.shared.pending;
 	// 计算完 重置updateQueue.shared.pending
 	updateQueue.shared.pending = null;

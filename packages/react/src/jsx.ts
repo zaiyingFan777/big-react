@@ -1,5 +1,5 @@
 // jsx或者React.createElement执行返回的结果是一种被称为ReactElement的数据结构
-import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols';
+import { REACT_ELEMENT_TYPE, REACT_FRAGMENT_TYPE } from 'shared/ReactSymbols';
 import {
 	Type,
 	Key,
@@ -83,6 +83,8 @@ export const jsx = function (
 	}
 	return ReactElement(type, key, ref, props);
 };
+
+export const Fragment = REACT_FRAGMENT_TYPE;
 
 // jsxDEV: 开发环境，jsx: 生产环境，这里我们让生产开发环境下的jsx是同样的实现
 // 实际react，生产开发环境下是不同的实现，开发环境可以做额外的检查，我们这里不需要

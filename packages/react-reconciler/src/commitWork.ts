@@ -107,10 +107,42 @@ const commitMutaitonEffectsOnFiber = (finishedWork: FiberNode) => {
 // 	<p><Child/></p>
 // </App>
 
+// 记录要被删除的节点
+function recordHostChildrenToDelete(
+	childrenToDelete: FiberNode[],
+	unmountFiber: FiberNode
+) {
+	// 1. 找到第一个root host节点(childrenToDelete数组中留下来的都是同一级的节点)
+	// 找到最后一个节点
+	const lastOne = childrenToDelete[childrenToDelete.length - 1];
+
+	if (!lastOne) {
+		// 我们第一次push进去的节点
+		childrenToDelete.push(unmountFiber);
+	} else {
+		// 判断是不是lastOne的兄弟节点
+		let node = lastOne.sibling;
+		while (node !== null) {
+			// 2. 每找到一个host节点，判断下这个节点是不是 1 找到那个节点的兄弟节点，fragment
+			// 像这种我们要删除fragment的时候，因为下面有两个p都需要被删除
+			// <div>
+			//   <>
+			// 	   <p>xxx</p>
+			// 	   <p>yyy</p>
+			//   </>
+			// </div>
+			if (unmountFiber === node) {
+				childrenToDelete.push(unmountFiber);
+			}
+			node = node.sibling;
+		}
+	}
+}
+
 // 递归子树的操作
 function commitDeletion(childToDelete: FiberNode) {
 	// 找到这个要被删除的fiberNode(子树)的根HostComponent
-	let rootHostNode: FiberNode | null = null;
+	const rootChildrenToDelete: FiberNode[] = [];
 
 	// 递归子树
 	// <div>
@@ -125,16 +157,10 @@ function commitDeletion(childToDelete: FiberNode) {
 		switch (unmountFiber.tag) {
 			case HostComponent:
 				// TODO 解绑ref
-				if (rootHostNode === null) {
-					// 如果rootHostComponent为Null，那么子树的根（rootHostComponent）就可以赋值为当前遍历的HostComponent
-					rootHostNode = unmountFiber;
-				}
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				return;
 			case HostText:
-				if (rootHostNode === null) {
-					// 如果rootHostComponent为Null，那么子树的根（rootHostComponent）就可以赋值为当前遍历的HostComponent
-					rootHostNode = unmountFiber;
-				}
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				return;
 			case FunctionComponent:
 				// TODO useEffect unmount、解绑ref
@@ -146,13 +172,16 @@ function commitDeletion(childToDelete: FiberNode) {
 		}
 	});
 
-	// 移除rootHostComponent的DOM
-	if (rootHostNode !== null) {
+	// 移除rootChildrenToDelete数组的DOM
+	if (rootChildrenToDelete.length) {
 		// 找到要删除的子树的根fiber节点的host类型的节点
 		const hostParent = getHostParent(childToDelete);
 		if (hostParent !== null) {
-			// 在hostParent下面删除掉这个子树的根rootHostNode host类型的节点
-			removeChild((rootHostNode as FiberNode).stateNode, hostParent);
+			// 遍历rootChildrenToDelete的每一个节点，调用romoveChild删除
+			rootChildrenToDelete.forEach((node) => {
+				// 在hostParent下面删除掉这个子树的根rootHostNode host类型的节点
+				removeChild(node.stateNode, hostParent);
+			});
 		}
 	}
 	// 重置标记、方便垃圾回收

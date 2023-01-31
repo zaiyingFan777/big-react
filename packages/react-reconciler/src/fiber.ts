@@ -1,6 +1,11 @@
 // 存放FiberNode的文件
 import { Props, Key, Ref, ReactElementType } from 'shared/ReactTypes';
-import { FunctionComponent, HostComponent, WorkTag } from './workTags';
+import {
+	Fragment,
+	FunctionComponent,
+	HostComponent,
+	WorkTag
+} from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig';
 
@@ -38,7 +43,7 @@ export class FiberNode {
 	constructor(tag: WorkTag, pendingProps: Props, key: Key) {
 		// FiberNode实例属性
 		this.tag = tag;
-		this.key = key;
+		this.key = key || null; // key默认值为null
 		// 对于HostComponent <div></div> 而言。stateNode就是保存的div的Dom
 		this.stateNode = null;
 		// 类型，FunctionComponent tag为0，这个type就是() => {}函数本身
@@ -133,5 +138,10 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 	}
 	const fiber = new FiberNode(fiberTag, props, key);
 	fiber.type = type;
+	return fiber;
+}
+
+export function createFiberFromFragment(elements: any[], key: Key): FiberNode {
+	const fiber = new FiberNode(Fragment, elements, key);
 	return fiber;
 }
