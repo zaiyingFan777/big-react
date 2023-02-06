@@ -8,6 +8,7 @@ import {
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig';
+import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
@@ -86,11 +87,15 @@ export class FiberRootNode {
 	container: Container; // 有可能是domElement或者其他宿主环境的元素
 	current: FiberNode;
 	finishedWork: FiberNode | null; // 指向了整个更新完成之后的hostRootFiber
+	pendingLanes: Lanes; // 所有未被消费的lane的集合
+	finishedLane: Lane; // 代表本次更新消费的lane
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
 		hostRootFiber.stateNode = this;
 		this.finishedWork = null;
+		this.pendingLanes = NoLanes;
+		this.finishedLane = NoLane;
 	}
 }
 

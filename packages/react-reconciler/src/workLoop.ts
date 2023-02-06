@@ -1,30 +1,87 @@
 // 完整的工作循环，调用beginWork和completeWork
+import { scheduleMicroTask } from 'hostConfig';
 import { beginWork } from './beginWork';
 import { commitMutationEffects } from './commitWork';
 import { completeWork } from './completeWork';
 import { FiberNode, FiberRootNode, createWorkInProgress } from './fiber';
 import { MutationMask, NoFlags } from './fiberFlags';
+import {
+	Lane,
+	NoLane,
+	SyncLane,
+	getHighestPriorityLane,
+	markRootFinished,
+	mergeLanes
+} from './fiberLanes';
+import { flushSyncCallbacks, scheduleSyncCallback } from './syncTaskQueue';
 import { HostRoot } from './workTags';
 
 // 全局的指针指向当前正在工作的fiberNode
 let workInProgress: FiberNode | null = null;
+// 保存：本次更新的lane是什么
+let wipRootRenderLane: Lane = NoLane;
 
 // 执行初始化的操作
-function prepareFreshStack(root: FiberRootNode) {
+function prepareFreshStack(root: FiberRootNode, lane: Lane) {
 	// FiberRootNode不是一个普通的fiberNode不能直接当作workInProgress，因此需要一个方法将fiberRootNode变为fiberNode
 	// 为我们的hostRootFiber创建一个workInProgress
 	workInProgress = createWorkInProgress(root.current, {});
+	wipRootRenderLane = lane;
 }
 
 // 连接ReactDOM.createRoot().render()中的render调用的updateContainer方法与renderRoot方法
-export function scheduleUpdateOnFiber(fiber: FiberNode) {
+// !!!每次更新都会触发scheduleUpdateOnFiber函数,
+// !!!ps: 如果我们在一次click事件中，调用三次setNum((num) => num + 1);这时候会将performSyncWorkOnRoot方法放到syncQueue中三次，也就是数组中有三个performSyncWorkOnRoot，因为scheduleMicroTask
+// 是微任务，所以是异步的，先执行同步，因此会第一次setNum((num) => num + 1)将performSyncWorkOnRoot放到数组中，执行scheduleMicroTask进入微任务队列，这是异步，然后接着执行setNum((num) => num + 1);
+// 然后再将performSyncWorkOnRoot放到数组中，执行scheduleMicroTask进入微任务队列，然后第三次执行setNum((num) => num + 1)再将performSyncWorkOnRoot放到数组中，然后同步任务完成后，执行flushSyncCallbacks方法(微任务)，起了三次微任务
+// 但是我们第一次的时候才会清空syncQueue数组，然后，执行performSyncWorkOnRoot函数，在render阶段完成后(计算state的时候，环状链表执行完计算出三次setState的结果)，在commit的时候，将root.pendingLanes &= ~lane，将这次执行的任务(同步Lane)
+// 移除掉，因此下两次的performSyncWorkOnRoot函数里再取优先级就已经没有了，也不会执行了，因此setState三次，取出同步Lane只执行一次performSyncWorkOnRoot。如果有其他的优先级就调度其他的优先级了
+export function scheduleUpdateOnFiber(fiber: FiberNode, lane: Lane) {
 	// TODO调度功能
 	// 1.首屏渲染传进来的时hostRootFiber，2.对于其他更新流程传入的是class component或者function component对应的fiber
 
 	// 根据当前fiber一直往上遍历到 fiberRootNode
 	// 拿到fiberRootNode
 	const root = markUpdateFromFiberToRoot(fiber);
-	renderRoot(root);
+	markRootUpdated(root, lane);
+	ensureRootIsScheduled(root);
+}
+
+// schedule阶段入口（保证我们的root被调度）
+function ensureRootIsScheduled(root: FiberRootNode) {
+	// 获取当前优先级最高的的lane
+	const updateLane = getHighestPriorityLane(root.pendingLanes);
+	if (updateLane === NoLane) {
+		// NoLane代表了当前root.pendingLanes没有lane,就对应的没有Update更新
+		return;
+	}
+	if (updateLane === SyncLane) {
+		// 同步优先级 用微任务调度
+		if (__DEV__) {
+			console.log('在微任务中调度，优先级：', updateLane);
+		}
+		// 比如下面的点击事件会触发三个更新
+		// const onClick = () => {
+		// 	// 创建3个update
+		// 	updateCount((count) => count + 1);
+		// 	updateCount((count) => count + 1);
+		// 	updateCount((count) => count + 1);
+		// };
+		// 每触发一次更新数组多一个回调
+		// 得到[performSyncWorkOnRoot, performSyncWorkOnRoot, performSyncWorkOnRoot]
+		// 每次更行都会将performSyncWorkOnRoot放到数组里[performSyncWorkOnRoot, performSyncWorkOnRoot]
+		scheduleSyncCallback(performSyncWorkOnRoot.bind(null, root, updateLane));
+		// 会在微任务中执行三次flushSyncCallbacks，但是只会进第一次，因为有全局变量isFlushingSyncQueue，后边两次都直接执行以下就退出了
+		scheduleMicroTask(flushSyncCallbacks);
+	} else {
+		// 其他优先级 用宏任务调度
+	}
+}
+
+// 传入update后，在scheduleUpdateOnFiber中将lane记录到fibeRootNode中的lane集合中，然后调度，完成更新，接着如果仍然有需要执行的lane通过调度继续更新直到，fiberRootNode中的lane集合都被调度执行完毕
+function markRootUpdated(root: FiberRootNode, lane: Lane) {
+	// 将本次更新的lane记录到fibeRootNode上的lane集合中
+	root.pendingLanes = mergeLanes(root.pendingLanes, lane);
 }
 
 // 根据当前fiber一直往上遍历到 fiberRootNode
@@ -47,8 +104,22 @@ function markUpdateFromFiberToRoot(fiber: FiberNode) {
 
 // renderRoot会执行更新的过程(更新流程)
 // 调用renderRoot的是触发更新的api: 1.首屏渲染：ReactDOM.createRoot().render(或者老版本的ReactDOM.render) 2.this.setState 3.useState的dispatch方法
-function renderRoot(root: FiberRootNode) {
-	prepareFreshStack(root);
+// 这就是renderRoot函数
+function performSyncWorkOnRoot(root: FiberRootNode, lane: Lane) {
+	const nextLane = getHighestPriorityLane(root.pendingLanes);
+
+	if (nextLane !== SyncLane) {
+		// 其他比SyncLane低的优先级
+		// NoLane
+		ensureRootIsScheduled(root);
+		return;
+	}
+	if (__DEV__) {
+		console.log('render阶段开始');
+	}
+
+	// 初始化 wip、wipRootRenderLane
+	prepareFreshStack(root, lane);
 
 	// do while无论如何都会先执行一次循环体
 	do {
@@ -67,6 +138,10 @@ function renderRoot(root: FiberRootNode) {
 	// 获取工作完毕后的wip fiberNode树
 	const finishedWork = root.current.alternate;
 	root.finishedWork = finishedWork;
+	// 本次更新的lane
+	root.finishedLane = lane;
+	// 本次更新结束以后更新为NoLane
+	wipRootRenderLane = NoLane;
 
 	// 执行commit操作
 	// wip fiberNode树以及树中的flags 执行具体的dom操作
@@ -91,9 +166,20 @@ function commitRoot(root: FiberRootNode) {
 	if (__DEV__) {
 		console.warn('commit阶段开始', finishedWork);
 	}
+	// 拿到本次更新的lane
+	const lane = root.finishedLane;
+
+	if (lane === NoLane && __DEV__) {
+		console.error('commit阶段finishedLane不应该是NoLane');
+	}
 
 	// 重置
 	root.finishedWork = null;
+	// 重置本次更新的lane
+	root.finishedLane = NoLane;
+
+	// 移除本次更新的lane
+	markRootFinished(root, lane);
 
 	// 判断是否存在3个子阶段需要执行的操作
 	// 1.root flags 2.root subtreeFlags
@@ -133,7 +219,7 @@ function workLoop() {
 
 function performUnitOfWork(fiber: FiberNode) {
 	// next可能是子fiber或者null
-	const next = beginWork(fiber);
+	const next = beginWork(fiber, wipRootRenderLane);
 	// 工作完更改状态，将pendingProps赋值给memoizedProps
 	fiber.memoizedProps = fiber.pendingProps;
 

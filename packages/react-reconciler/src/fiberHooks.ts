@@ -11,6 +11,7 @@ import {
 } from './updateQueue';
 import { Action } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
+import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
 
 // 定义当前正在render的fiber
 let currentlyRenderingFiber: FiberNode | null = null;
@@ -18,6 +19,7 @@ let currentlyRenderingFiber: FiberNode | null = null;
 let workInProgressHook: Hook | null = null;
 // 更新流程
 let currentHook: Hook | null = null;
+let renderLane: Lane = NoLane;
 
 const { currentDispatcher } = internals;
 
@@ -29,12 +31,14 @@ interface Hook {
 	next: Hook | null;
 }
 
-export function renderWithHooks(wip: FiberNode) {
+export function renderWithHooks(wip: FiberNode, lane: Lane) {
 	// 赋值操作
 	// 这样就可以记录当前正在render的FC对应的fiberNode，在fiberNode中保存hook数据
 	currentlyRenderingFiber = wip;
 	// 重置wip(fiberNode)的memoizedState为null，因为接下来的操作为创建一条hooks链表
 	wip.memoizedState = null; // wip.memoizedState保存的是hooks链表
+	// 当前更新的优先级
+	renderLane = lane;
 
 	const current = wip.alternate;
 	if (current !== null) {
@@ -63,6 +67,8 @@ export function renderWithHooks(wip: FiberNode) {
 	currentlyRenderingFiber = null;
 	workInProgressHook = null;
 	currentHook = null;
+	// 重置renderLane
+	renderLane = NoLane;
 	return children;
 }
 
@@ -87,7 +93,11 @@ function updateState<State>(): [State, Dispatch<State>] {
 	if (pending !== null) {
 		// 计算新值
 		// hook.memoizedState是baseState
-		const { memoizedState } = processUpdateQueue(hook.memoizedState, pending);
+		const { memoizedState } = processUpdateQueue(
+			hook.memoizedState,
+			pending,
+			renderLane
+		);
 		hook.memoizedState = memoizedState;
 	}
 
@@ -202,11 +212,13 @@ function dispatchSetState<State>(
 	updateQueue: UpdateQueue<State>,
 	action: Action<State>
 ) {
+	// 获取当前的优先级
+	const lane = requestUpdateLane();
 	// 这里执行setState的时候将update挂载到对应fiberNode的memoizedState上的单向hook链表上具体的某个链表的updateQueue的shared.pending上
-	const update = createUpdate(action);
+	const update = createUpdate(action, lane);
 	enqueueUpdate(updateQueue, update);
 	// 从fiber拿到fiberRootNode
-	scheduleUpdateOnFiber(fiber);
+	scheduleUpdateOnFiber(fiber, lane);
 
 	// // 首屏渲染触发更新
 	// const update = createUpdate<ReactElementType | null>(element);

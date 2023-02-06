@@ -23,11 +23,26 @@ function App() {
 	// return <ul onClickCapture={() => setNum(num + 1)}>{arr}</ul>;
 
 	// 测试Fragment
+	// return (
+	// 	<ul onClickCapture={() => setNum(num + 1)}>
+	// 		<li>4</li>
+	// 		<li>5</li>
+	// 		{arr}
+	// 	</ul>
+	// );
+
+	// 测试批处理
 	return (
-		<ul onClickCapture={() => setNum(num + 1)}>
-			<li>4</li>
-			<li>5</li>
-			{arr}
+		// <ul onClickCapture={() => setNum(num + 1)}>
+		// 测试批处理
+		<ul
+			onClickCapture={() => {
+				setNum((num) => num + 1);
+				setNum((num) => num + 1);
+				setNum((num) => num + 1);
+			}}
+		>
+			{num}
 		</ul>
 	);
 }

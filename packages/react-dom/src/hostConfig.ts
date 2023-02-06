@@ -64,3 +64,11 @@ export function removeChild(
 ) {
 	container.removeChild(child);
 }
+
+// 调度微任务
+export const scheduleMicroTask =
+	typeof queueMicrotask === 'function'
+		? queueMicrotask
+		: typeof Promise === 'function'
+		? (callback: (...arg: any) => void) => Promise.resolve(null).then(callback) // 传进来的回调函数在promise的then中执行
+		: setTimeout;
