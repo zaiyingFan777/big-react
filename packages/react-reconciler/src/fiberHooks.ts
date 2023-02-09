@@ -12,6 +12,8 @@ import {
 import { Action } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
+import { Flags, PassiveEffect } from './fiberFlags';
+import { HookHasEffect, Passive } from './hookEffectTags';
 
 // 定义当前正在render的fiber
 let currentlyRenderingFiber: FiberNode | null = null;
@@ -31,12 +33,32 @@ interface Hook {
 	next: Hook | null;
 }
 
+// useEffect/useLayoutEffect的数据结构
+export interface Effect {
+	tag: Flags; // 区分是什么effect
+	create: EffectCallback | void;
+	destory: EffectCallback | void;
+	deps: EffectDeps;
+	next: Effect | null;
+}
+
+// 函数组件的updateQueue
+export interface FCUpdateQueue<State> extends UpdateQueue<State> {
+	// 新增字段
+	lastEffect: Effect | null; // 指向函数组件effect环状链表的最后一个effect
+}
+
+type EffectCallback = () => void;
+type EffectDeps = any[] | null;
+
 export function renderWithHooks(wip: FiberNode, lane: Lane) {
 	// 赋值操作
 	// 这样就可以记录当前正在render的FC对应的fiberNode，在fiberNode中保存hook数据
 	currentlyRenderingFiber = wip;
 	// 重置wip(fiberNode)的memoizedState为null，因为接下来的操作为创建一条hooks链表
 	wip.memoizedState = null; // wip.memoizedState保存的是hooks链表
+	// 重置effect链表
+	wip.updateQueue = null;
 	// 当前更新的优先级
 	renderLane = lane;
 
@@ -74,13 +96,135 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 
 // mount流程时的dispatch
 const HooksDispatcherOnMount: Dispatcher = {
-	useState: mountState
+	useState: mountState,
+	useEffect: mountEffect
 };
 
 // update流程时的dispatch
 const HooksDispatcherOnUpdate: Dispatcher = {
-	useState: updateState
+	useState: updateState,
+	useEffect: updateEffect
 };
+
+// !!!注意：useEffect: render阶段发现fiber中存在PassiveEffect(存在需要执行的副作用),在commit阶段首先要调度副作用，调度一个回调函数的执行，为什么要调度？因为useEffect是一个异步的过程
+// 要先进行调度的过程，调度完以后再同步收集回调，收集什么回调？收集当前这个useEffect他会触发哪些回调，收集完等commit结束后，再去异步的执行副作用。
+// render阶段(FCfiberNode存在副作用) -> commit阶段（调度副作用->收集回调）->执行副作用(异步)
+function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+	// 找到当前useEffect对应的hook数据
+	const hook = mountWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	// mount时fiber是需要处理副作用的
+	(currentlyRenderingFiber as FiberNode).flags |= PassiveEffect;
+	// useEffect保存在hook({memoizedState:xxx,next:Hook,updateQueue:xxx})的memoizedState字段中
+	// Passive | HookHasEffect 说明fiebr具有PassiveEffect，mount或者依赖变化时，effect hook Passive代表「useEffect对应effect」 HookHasEffect代表「当前effect本次更新存在副作用」
+	hook.memoizedState = pushEffect(
+		Passive | HookHasEffect, // mount的时候需要执行create
+		create,
+		undefined,
+		nextDeps
+	);
+}
+
+function updateEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+	// 找到当前useEffect对应的hook数据
+	const hook = updateWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	let destory: EffectCallback | void; // 在TS中只有undefined可以赋值给void类型
+
+	if (currentHook !== null) {
+		// 上一次更新的effect
+		const prevEffect = currentHook.memoizedState as Effect;
+		destory = prevEffect.destory;
+
+		if (nextDeps !== null) {
+			// 浅比较依赖
+			const prevDeps = prevEffect.deps;
+			if (areHookInputsEqual(nextDeps, prevDeps)) {
+				// 依赖没有变化，不用触发回调
+				hook.memoizedState = pushEffect(Passive, create, destory, nextDeps);
+				return;
+			}
+		}
+		// 浅比较后 不相等
+		(currentlyRenderingFiber as FiberNode).flags |= PassiveEffect;
+		hook.memoizedState = pushEffect(
+			Passive | HookHasEffect, // 需要触发回调
+			create,
+			destory,
+			nextDeps
+		);
+	}
+}
+
+function areHookInputsEqual(nextDeps: EffectDeps, prevDeps: EffectDeps) {
+	// useEffect(()=>{})第二个参数没有，每次都需要执行
+	if (prevDeps === null || nextDeps === null) {
+		return false;
+	}
+	for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+		// JS中==、===和Object.is()的区别 https://www.cnblogs.com/lindasu/p/7471519.html
+		if (Object.is(prevDeps[i], nextDeps[i])) {
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+
+// !!!注意：hooks无论useState还是useEffect的数据结构是 {memoizedState:xxx,next:Hook,updateQueue:xxx} 如果app函数组件有useEffect1、useEffect2、useRef、useEffect3
+// 正常是 uE1.next -> uE2.next -> uR.next -> uE3这样的单向链表，但为了方便执行useEffect，将uesEffect变为环状链表，
+// 然后uE1.memoizedState.next -> uE2.memoizedState(存储的是effect) uE2.memoizedState.next -> uE3.memoizedState uE3.memoizedState.next -> uE1
+// effect环状列表保存在fiber的updateQueue里
+// useEffect保存在hook({memoizedState:xxx,next:Hook,updateQueue:xxx})的memoizedState字段中
+function pushEffect(
+	hookFlags: Flags,
+	create: EffectCallback | void,
+	destory: EffectCallback | void,
+	deps: EffectDeps
+): Effect {
+	// 定义一个新的effect
+	const effect: Effect = {
+		tag: hookFlags,
+		create,
+		destory,
+		deps,
+		next: null
+	};
+	const fiber = currentlyRenderingFiber as FiberNode;
+	const updateQueue = fiber.updateQueue as FCUpdateQueue<any>;
+	// 如果当前不存在uodateQueue
+	if (updateQueue === null) {
+		const updateQueue = createFCUpdateQueue();
+		fiber.updateQueue = updateQueue;
+		// 构成effect的环状链表
+		effect.next = effect;
+		// 将effect的环状链表放到updateQueue的updateQueue字段上
+		updateQueue.lastEffect = effect;
+	} else {
+		// 插入effect
+		const lastEffect = updateQueue.lastEffect;
+		if (lastEffect === null) {
+			// 构成effect的环状链表
+			effect.next = effect;
+			// 将effect的环状链表放到updateQueue的updateQueue字段上
+			updateQueue.lastEffect = effect;
+		} else {
+			// 构造环状链表
+			const firstEffect = lastEffect.next;
+			lastEffect.next = effect;
+			effect.next = firstEffect;
+			// 再让updateQueue.lastEffect指向最后一个effect
+			updateQueue.lastEffect = effect;
+		}
+	}
+	return effect;
+}
+
+function createFCUpdateQueue<State>() {
+	const updateQueue = createUpdateQueue<State>() as FCUpdateQueue<State>;
+	updateQueue.lastEffect = null;
+	return updateQueue;
+}
 
 function updateState<State>(): [State, Dispatch<State>] {
 	// 找到当前useState对应的hook数据
@@ -89,6 +233,8 @@ function updateState<State>(): [State, Dispatch<State>] {
 	// 实现 updateState中 计算新state的逻辑
 	const queue = hook.updateQueue as UpdateQueue<State>;
 	const pending = queue.shared.pending;
+	// 置空更新队列
+	queue.shared.pending = null;
 
 	if (pending !== null) {
 		// 计算新值

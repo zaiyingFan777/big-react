@@ -7,6 +7,7 @@ import { Action } from 'shared/ReactTypes';
 // Dispatch可以是状态updateNum(1)也可以是改变状态的函数updateNum(num + 1)
 export interface Dispatcher {
 	useState: <T>(initialState: (() => T) | T) => [T, Dispatch<T>];
+	useEffect: (callback: () => void | void, deps: any[] | void) => void;
 }
 
 export type Dispatch<State> = (action: Action<State>) => void;

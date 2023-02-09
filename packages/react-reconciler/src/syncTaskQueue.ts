@@ -21,13 +21,13 @@ export function flushSyncCallbacks() {
 		try {
 			// 执行同步回调
 			syncQueue.forEach((callback) => callback());
-			syncQueue = null;
 		} catch (e) {
 			if (__DEV__) {
 				console.error('flushSyncCallbacks报错', e);
 			}
 		} finally {
 			isFlushingSyncQueue = false;
+			syncQueue = null;
 		}
 	}
 }

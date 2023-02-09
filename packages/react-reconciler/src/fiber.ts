@@ -9,6 +9,7 @@ import {
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig';
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
+import { Effect } from './fiberHooks';
 
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
@@ -79,6 +80,11 @@ export class FiberNode {
 	}
 }
 
+export interface PendingPassiveEffects {
+	unmount: Effect[];
+	update: Effect[];
+}
+
 // 当前应用统一的根节点fiberRootNode
 // 需要参数，ReactDOM.createRoot(rootElement).render(或者老版本的ReactDOM.render) rootElement就是container参数
 // fiberRootNode.current = hostRootFiber，hostRootFiber.stateNode = fiberRootNode;
@@ -89,6 +95,7 @@ export class FiberRootNode {
 	finishedWork: FiberNode | null; // 指向了整个更新完成之后的hostRootFiber
 	pendingLanes: Lanes; // 所有未被消费的lane的集合
 	finishedLane: Lane; // 代表本次更新消费的lane
+	pendingPassiveEffects: PendingPassiveEffects; // 收集1.unmount时执行的destory回调2.update时执行的create回调
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
@@ -96,6 +103,10 @@ export class FiberRootNode {
 		this.finishedWork = null;
 		this.pendingLanes = NoLanes;
 		this.finishedLane = NoLane;
+		this.pendingPassiveEffects = {
+			unmount: [],
+			update: []
+		};
 	}
 }
 
