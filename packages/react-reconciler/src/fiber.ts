@@ -14,6 +14,10 @@ import { Effect } from './fiberHooks';
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
 
+// mount阶段的起点，createContainer中会把根组件<app>对应reactElement元素传入给rootFIber的updateQueue，作为beginwork任务的起点
+// memoizedState 对于不同类型的fiber意义不一样
+// 对于hostRoot 它就是根组件对应的reactElement
+// 对于函数组件memoizedState就是他的hook的单向链表，函数组件的updateQueue就是他的useEffect的环状链表
 export class FiberNode {
 	tag: WorkTag;
 	pendingProps: Props;

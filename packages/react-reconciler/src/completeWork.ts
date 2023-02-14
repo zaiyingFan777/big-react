@@ -1,5 +1,6 @@
 import {
 	Container,
+	Instance,
 	appendInitialChild,
 	createInstance,
 	createTextInstance
@@ -13,7 +14,6 @@ import {
 	HostText
 } from './workTags';
 import { NoFlags, Update } from './fiberFlags';
-import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 // 标记更新的方法
 function markUpdate(fiber: FiberNode) {
@@ -38,7 +38,7 @@ export const completeWork = (wip: FiberNode) => {
 
 				// 将事件回调保存在DOM中，通过以下两个时机对接：1.创建dom时，2.更新属性时
 				// 这里是更新dom
-				updateFiberProps(wip.stateNode, newProps);
+				markUpdate(wip);
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM
@@ -86,7 +86,7 @@ export const completeWork = (wip: FiberNode) => {
 // 对于离屏dom，插入到h3的是A中的div
 
 // <h3><A/><A/></h3> 不光要插入A，还需要插入A的兄弟节点
-function appendAllChildren(parent: Container, wip: FiberNode) {
+function appendAllChildren(parent: Container | Instance, wip: FiberNode) {
 	let node = wip.child;
 
 	// 递归插入

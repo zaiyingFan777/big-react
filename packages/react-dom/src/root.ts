@@ -3,7 +3,7 @@ import {
 	createContainer,
 	updateContainer
 } from 'react-reconciler/src/fiberReconciler';
-import { Container } from 'hostConfig';
+import { Container } from './hostConfig';
 import { ReactElementType } from 'shared/ReactTypes';
 import { initEvent } from './SyntheticEvent';
 

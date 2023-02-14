@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
+// import ReactDOM from 'react-dom/client';
+import ReactDOM from 'react-noop-renderer';
 
 // vite热更新，告诉vite哪里变了
 console.log(import.meta.hot);
@@ -52,33 +53,47 @@ console.log(import.meta.hot);
 // }
 
 // useEffect
+// function App() {
+// 	const [num, updateNum] = useState(0);
+// 	useEffect(() => {
+// 		console.log('App mount');
+// 	}, []);
+
+// 	useEffect(() => {
+// 		console.log('num change create', num);
+// 		return () => {
+// 			console.log('num change destroy', num);
+// 		};
+// 	}, [num]);
+
+// 	return (
+// 		<div onClick={() => updateNum(num + 1)}>
+// 			{num === 0 ? <Child /> : 'noop'}
+// 		</div>
+// 	);
+// }
+
+// function Child() {
+// 	useEffect(() => {
+// 		console.log('Child mount');
+// 		return () => console.log('Child unmount');
+// 	}, []);
+
+// 	return 'i am child';
+// }
+
+// 测试noor-renderer
 function App() {
-	const [num, updateNum] = useState(0);
-	useEffect(() => {
-		console.log('App mount');
-	}, []);
-
-	useEffect(() => {
-		console.log('num change create', num);
-		return () => {
-			console.log('num change destroy', num);
-		};
-	}, [num]);
-
 	return (
-		<div onClick={() => updateNum(num + 1)}>
-			{num === 0 ? <Child /> : 'noop'}
-		</div>
+		<>
+			<Child />
+			<div>hello world</div>
+		</>
 	);
 }
 
 function Child() {
-	useEffect(() => {
-		console.log('Child mount');
-		return () => console.log('Child unmount');
-	}, []);
-
-	return 'i am child';
+	return 'Child';
 }
 
 // const F = (
@@ -92,6 +107,14 @@ function Child() {
 
 console.log(<App />);
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-	<App />
-);
+// dom
+// ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+// 	<App />
+// );
+
+// noop-renderer
+const root = ReactDOM.createRoot();
+
+root.render(<App />);
+
+window.root = root;

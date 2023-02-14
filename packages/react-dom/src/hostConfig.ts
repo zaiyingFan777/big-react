@@ -1,5 +1,5 @@
 import { FiberNode } from 'react-reconciler/src/fiber';
-import { HostText } from 'react-reconciler/src/workTags';
+import { HostComponent, HostText } from 'react-reconciler/src/workTags';
 import { updateFiberProps } from './SyntheticEvent';
 import { Props } from 'shared/ReactTypes';
 import { DOMElement } from './SyntheticEvent';
@@ -45,7 +45,8 @@ export function commitUpdate(fiber: FiberNode) {
 		case HostText:
 			const text = fiber.memoizedProps.content;
 			return commitTextUpdate(fiber.stateNode, text);
-		// case HostComponent: 这里可以判断dom的属性比如className、style是否变化去更新dom，通过fiberNode的updateQueue属性(见completeWork.ts)
+		case HostComponent: // 这里可以判断dom的属性比如className、style是否变化去更新dom，通过fiberNode的updateQueue属性(见completeWork.ts)
+			return updateFiberProps(fiber.stateNode, fiber.memoizedProps);
 		default:
 			if (__DEV__) {
 				console.warn('未实现的Update类型', fiber);

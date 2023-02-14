@@ -140,7 +140,7 @@ function updateEffect(create: EffectCallback | void, deps: EffectDeps | void) {
 			// 浅比较依赖
 			const prevDeps = prevEffect.deps;
 			if (areHookInputsEqual(nextDeps, prevDeps)) {
-				// 依赖没有变化，不用触发回调
+				// 依赖没有变化，不用触发回调Passive(空数组的情况)
 				hook.memoizedState = pushEffect(Passive, create, destory, nextDeps);
 				return;
 			}

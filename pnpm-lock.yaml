@@ -26,6 +26,7 @@ importers:
       jest: ^29.3.1
       jest-config: ^29.3.1
       jest-environment-jsdom: ^29.3.1
+      jest-react: ^0.14.0
       prettier: ^2.8.1
       rimraf: ^3.0.2
       rollup: ^3.7.5
@@ -59,6 +60,7 @@ importers:
       jest: registry.npmmirror.com/jest/29.3.1
       jest-config: registry.npmmirror.com/jest-config/29.3.1
       jest-environment-jsdom: registry.npmmirror.com/jest-environment-jsdom/29.3.1
+      jest-react: registry.npmmirror.com/jest-react/0.14.0_jest@29.3.1
       prettier: registry.npmmirror.com/prettier/2.8.1
       rimraf: registry.npmmirror.com/rimraf/3.0.2
       rollup: registry.npmmirror.com/rollup/3.7.5
@@ -74,6 +76,14 @@ importers:
       shared: link:../shared
 
   packages/react-dom:
+    specifiers:
+      react-reconciler: workspace:*
+      shared: workspace:*
+    dependencies:
+      react-reconciler: link:../react-reconciler
+      shared: link:../shared
+
+  packages/react-noop-renderer:
     specifiers:
       react-reconciler: workspace:*
       shared: workspace:*
@@ -5051,6 +5061,19 @@ packages:
         optional: true
     dependencies:
       jest-resolve: registry.npmmirror.com/jest-resolve/29.3.1
+    dev: true
+
+  registry.npmmirror.com/jest-react/0.14.0_jest@29.3.1:
+    resolution: {integrity: sha512-edKkKBvG4iVbEm6ogCiu9uTUCLNpj2V4dpM0dcrxBz7OTd2lvng2ELkLqji1tdq2BtEXkfhDbqgecNFn4W+KDQ==, registry: https://registry.npm.taobao.org/, tarball: https://registry.npmmirror.com/jest-react/-/jest-react-0.14.0.tgz}
+    id: registry.npmmirror.com/jest-react/0.14.0
+    name: jest-react
+    version: 0.14.0
+    peerDependencies:
+      jest: ^23.0.1 || ^24.0.0 || ^25.1.0
+      react: ^18.2.0
+      react-test-renderer: ^18.2.0
+    dependencies:
+      jest: registry.npmmirror.com/jest/29.3.1
     dev: true
 
   registry.npmmirror.com/jest-regex-util/29.2.0:

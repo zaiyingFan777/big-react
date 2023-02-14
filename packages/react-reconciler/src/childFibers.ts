@@ -221,8 +221,22 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 			// 3.标记移动还是插入
 			// 「移动」具体是指「向右移动」
 			// 移动的判断依据：element的index与「element对应current fiber」的index的比较 比如A1更新前为0，更新后为2
-			// A1 B2 C3 -> B2 C3 A1
+			// A1 B2 C3 -> B2 C3 A1  // 由于A1没有before，placement最终执行parent.appendChild
 			// 0__1__2______0__1__2
+			// 比如
+			// <div id="p">
+			// 	<div id="c1">c1</div>
+			// 	<div id="c2">c2</div>
+			// </div>;
+			// 执行document.querySelector('#p').appendChild(document.querySelector('#c1'));
+			// 然后变为了
+			// <div id="p">
+			// 	<div id="c2">c2</div>
+			// 	<div id="c1">c1</div>
+			// </div>;
+			// 这时候就变为了节点移动，而不需要删除谁再插入谁，我就怎么没想到呢，哈哈哈
+			// commitRoot的时候，其实是对着wip去做的。比如a1 -> c3这时候 我们wip中会有childDelete[a1]，先插入c3，然后删除a1.因为我们diff出来的结果就是wip树
+			// 我们去操作的时候肯定拿着wip去看具体的标记去操作。
 			// 当遍历element时，「当前遍历到的element」一定是「所有已遍历的element」中最靠右那个。
 			// 所以只需要记录「最后一个可复用fiber」在current中的index（lastPlacedIndex）(ps: 比如B2是可复用的fiber，B2在current中的index为1, lastPlacedIndex为1)，在接下来的遍历中：
 			// (比如B2 lastPlacedIndex为1，然后C3也是可复用的，他在current中的index为2，2>1所以就不需要移动，事实也是变化前B2 C3,变化后依然是B2 C3,位置就没动，这时候lastPlacedIndex为2，
