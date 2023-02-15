@@ -243,6 +243,7 @@ function commitRoot(root: FiberRootNode) {
 	}
 
 	rootDoesHasPassiveEffect = false;
+	// commit结束后，进行微任务调度
 	ensureRootIsScheduled(root);
 }
 
