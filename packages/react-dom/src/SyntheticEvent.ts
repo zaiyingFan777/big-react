@@ -9,6 +9,12 @@
 // 事件冒泡 onClick
 
 import { Container } from 'hostConfig';
+import {
+	unstable_ImmediatePriority,
+	unstable_NormalPriority,
+	unstable_UserBlockingPriority,
+	unstable_runWithPriority
+} from 'scheduler';
 import { Props } from 'shared/ReactTypes';
 
 // 在dom的elementPropsKey字段上保存
@@ -73,7 +79,13 @@ function createSyntheticEvent(e: Event) {
 function triggerEventFlow(paths: EventCallback[], se: SyntheticEvent) {
 	for (let i = 0; i < paths.length; i++) {
 		const callback = paths[i];
-		callback.call(null, se);
+		// 传入合成事件的类型，转换为优先级
+		// 将当前的上下文优先级改为传入的eventTypeToSchedulerPriority(se.type)优先级
+		// 先点击事件执行回调->setState, setState的时候获取当前的schedule优先级并转换为react的lane
+		unstable_runWithPriority(eventTypeToSchedulerPriority(se.type), () => {
+			// 执行回调函数
+			callback.call(null, se);
+		});
 
 		if (se.__stopPropagation) {
 			// 阻止事件传播
@@ -158,4 +170,18 @@ function collectPaths(
 		targetElement = targetElement.parentNode as DOMElement;
 	}
 	return paths;
+}
+
+// 根据事件类型转换为调度的优先级
+function eventTypeToSchedulerPriority(eventType: string) {
+	switch (eventType) {
+		case 'click':
+		case 'keydown':
+		case 'keyup':
+			return unstable_ImmediatePriority;
+		case 'scroll':
+			return unstable_UserBlockingPriority;
+		default:
+			return unstable_NormalPriority;
+	}
 }

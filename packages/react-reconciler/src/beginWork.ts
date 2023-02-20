@@ -78,6 +78,7 @@ function updateHostRoot(wip: FiberNode, renderLane: Lane) {
 	const updateQueue = wip.updateQueue as UpdateQueue<ReactElementType>;
 	const pending = updateQueue.shared.pending;
 	// 计算完 重置updateQueue.shared.pending
+	// 首屏渲染不会被打断，因此将updateQueue.shared.pending置空没问题
 	updateQueue.shared.pending = null;
 	const { memoizedState } = processUpdateQueue(baseState, pending, renderLane);
 	// <App/>

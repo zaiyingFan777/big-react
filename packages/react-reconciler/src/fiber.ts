@@ -10,6 +10,7 @@ import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig';
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
+import { CallbackNode } from 'scheduler';
 
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
@@ -100,6 +101,10 @@ export class FiberRootNode {
 	pendingLanes: Lanes; // 所有未被消费的lane的集合
 	finishedLane: Lane; // 代表本次更新消费的lane
 	pendingPassiveEffects: PendingPassiveEffects; // 收集1.unmount时执行的destory回调2.update时执行的create回调
+	// 保存回调函数，同一work继续调度此回调函数
+	callbackNode: CallbackNode | null;
+	callbackPriority: Lane;
+
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
@@ -107,6 +112,10 @@ export class FiberRootNode {
 		this.finishedWork = null;
 		this.pendingLanes = NoLanes;
 		this.finishedLane = NoLane;
+
+		this.callbackNode = null;
+		this.callbackPriority = NoLane;
+
 		this.pendingPassiveEffects = {
 			unmount: [],
 			update: []

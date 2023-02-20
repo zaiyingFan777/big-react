@@ -66,6 +66,7 @@ let curCallback: CallbackNode | null = null;
 );
 
 // 其实插入dom我们做了延时操作，不是说进入一个work，就一直走while的循环，而是被切片，可能会执行很多次perform或者schedule
+// 但是如果优先级是ImmediatePriority，那就只执行2次schedule和一次perform，因为执行完再次schedule发现workList为空就跳出了
 // 调度work
 function schedule() {
 	// 当前调度的回调
