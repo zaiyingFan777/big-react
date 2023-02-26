@@ -77,3 +77,5 @@ export const HookHasEffect = 0b0001;
 // mount、update时的区别
 // mount时：一定标记PassiveEffect
 // update时：deps变化时标记PassiveEffect
+
+// 如果useEffect要执行(依赖数组里面的依赖右变化)，会先执行上一次return的cleanup函数再执行本次的回调，并把回调返回的cleanup存下来下次用

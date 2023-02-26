@@ -49,9 +49,56 @@ const RootInComplete = 1;
 const RootCompleted = 2;
 // TODO 执行过程种报错了
 
+// 一些感悟：
+// function App() {
+// 	const [num, update] = useState(100);
+// 	return (
+// 		<ul onClick={() => update(50)}>
+// 			{new Array(num).fill(0).map((_, i) => {
+// 				return <Child key={i}>{i}</Child>;
+// 			})}
+// 		</ul>
+// 	);
+// }
+// function Child({ children }) {
+// 	const now = performance.now();
+// 	while (performance.now() - now < 4) {}
+// 	return <li>{children}</li>;
+// }
+// 我们app组件执行后会根据state的值返回jsx然后被我们的jsx方法生成reactElement，然后这个renderWithHook会生成children这个children就是我们的Child组件的数组，然后接着执行render过程，
+// 其实每次render都是产生的fiberNode赋值给workInProgress变量，所以我们就是打断的子组件的render，
+
+// 何为并发更新，比如我们的canvas动画是一直动的一个动画需要一直渲染，但是为了不卡顿在一次宏任务中，我们react时间切片只占用每一帧中的16.6ms中的5ms左右去render，然后继续把js线程让出来，让其渲染进程
+// 继续运行，这样就可视范围就不会出现卡顿范围
+
+// 在同步操作比如commitRoot的时候，点击事件触发，这个点击事件的回调会在commitRoot之后执行，相当于回调加入了任务队列进入了事件循环
+// ps:
+// <div id="xxx">111111111111</div>
+// document.getElementById('xxx').addEventListener('click', () => {
+//   console.log(1111111111)
+// })
+// var count = 0;
+// while(count <= 3) {
+//   sleep(1000)
+//   count++;
+//   console.log(count)
+// }
+
+// function sleep(time){
+//   var timeStamp = new Date().getTime();
+//   var endTime = timeStamp + time;
+//   while(true){
+//     if (new Date().getTime() > endTime){
+//       return;
+//     }
+//   }
+// }
+// 我们在同步代码没执行完前点击div，会等着while循环结束再打印1111111111
+
 // 执行初始化的操作
 function prepareFreshStack(root: FiberRootNode, lane: Lane) {
 	// 如果有更高优先级的打断，我们会重新创建一颗workInProgress树，如果是同一优先级就不会走到这里，继续之前的wip render
+	// 如果高优先级执行完，再次回到调度低优先级的时候，会重新构建一颗workInProgress树
 	root.finishedLane = NoLane;
 	root.finishedWork = null;
 	// FiberRootNode不是一个普通的fiberNode不能直接当作workInProgress，因此需要一个方法将fiberRootNode变为fiberNode
