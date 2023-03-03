@@ -17,8 +17,15 @@ import { CallbackNode } from 'scheduler';
 
 // mount阶段的起点，createContainer中会把根组件<app>对应reactElement元素传入给rootFIber的updateQueue，作为beginwork任务的起点
 // memoizedState 对于不同类型的fiber意义不一样
-// 对于hostRoot 它就是根组件对应的reactElement
+// 对于hostRootFiber 它就是根组件对应的reactElement，hostRoot将updateQueue里的reactElement计算完毕后赋值给memoizedState
 // 对于函数组件memoizedState就是他的hook的单向链表，函数组件的updateQueue就是他的useEffect的环状链表
+
+// updateQueue：函数组件的updateQueue就是他的useEffect的环状链表
+// hostComponent的updateQueue是他的更新的属性比如[className, 'aaa', title, 'hahaha']
+// 属性的更新是在completeWork中完成的
+
+// pendingProps memoizedProps，计算完毕将pendingProps赋值给memoizedProps，比如hostComponent就是他的{children: xxx}或者onClick等
+// 对于function组件就是我们传递的props,里面也可能有children或者其他我们传递的props
 export class FiberNode {
 	tag: WorkTag;
 	pendingProps: Props;

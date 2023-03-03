@@ -86,9 +86,15 @@ export const jsx = function (
 
 export const Fragment = REACT_FRAGMENT_TYPE;
 
-// jsxDEV: 开发环境，jsx: 生产环境，这里我们让生产开发环境下的jsx是同样的实现
+// jsxDEV: 开发环境，jsx: 生产环境
 // 实际react，生产开发环境下是不同的实现，开发环境可以做额外的检查，我们这里不需要
+// creatElement与jsx方法的差异，前者是把key放到config里面，后者是放到方法的第三个参数突出key的重要性
+// jsx的参数如下：
+// 1.对于开发环境，jsxDEV参数依次为type、props、key、source、self。其中后两者为开发环境用于调试的参数
+// 2.对于生产环境，jsx参数依次为type、props、key
+// createElement的参数依次为type、props、...children。其中children及后续其他传参经过转换都会作为children属性
 export const jsxDEV = function (type: ElementType, config: any) {
+	// console.log(arguments); arguments[2]就是key
 	// config中有key, ref我们需要单独处理一下
 	let key: Key = null;
 	const props: Props = {};

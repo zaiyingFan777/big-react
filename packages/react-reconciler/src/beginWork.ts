@@ -124,6 +124,10 @@ function reconcileChildren(wip: FiberNode, children?: ReactElementType) {
 		// update
 		// 对于首屏渲染，hostRootFiber既有workInProgress也有current，所以走update逻辑,被插入一个placement的标记，执行一次dom插入操作
 		// 首屏渲染hostRootFiber，wip是有current的，所以走reconcileChildFibers方法
+		// 2023/2/27
+		// 如果是{falg?<div>111</div>:<div><button>button</button></div>}第一次渲染111第二次因为<button>button</button>没有current，所以
+		// diff div 的时候走placeSingleChild(shouldTrackEffects为true,button的alternate为null)然后加上标记2。也是在completework的时候构建离屏dom(构建一个新的button dom)到commitRoot的时候直接插入构建好的div，
+		// 同时div的父节点还有删除的节点[childDeletion]
 		wip.child = reconcileChildFibers(wip, current?.child, children);
 	} else {
 		// mount 不需要追踪副作用

@@ -262,6 +262,15 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 			// 判断是否移动
 			const current = newFiber.alternate;
 			if (current !== null) {
+				// 如果用个例子来说就是这样：
+				// 从：a b c
+				// 到：c b a
+				// oldIndexC 2  > lastPlacedIndex 0
+				// lastPlacedIndex = 2
+				// oldIndexB 1  < lastPlacedIndex 2
+				// b |= Placement
+				// oldIndexA 0  < lastPlacedIndex 2
+				// a |= Placement
 				const oldIndex = current.index;
 				// 如果接下来遍历到的「可复用fiber」的index < lastPlacedIndex，则标记Placement
 				if (oldIndex < lastPlacedIndex) {
