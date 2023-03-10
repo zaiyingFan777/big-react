@@ -68,8 +68,33 @@ const RootCompleted = 2;
 // 我们app组件执行后会根据state的值返回jsx然后被我们的jsx方法生成reactElement，然后这个renderWithHook会生成children这个children就是我们的Child组件的数组，然后接着执行render过程，
 // 其实每次render都是产生的fiberNode赋值给workInProgress变量，所以我们就是打断的子组件的render，
 
-// 何为并发更新，比如我们的canvas动画是一直动的一个动画需要一直渲染，但是为了不卡顿在一次宏任务中，我们react时间切片只占用每一帧中的16.6ms中的5ms左右去render，然后继续把js线程让出来，让其渲染进程
-// 继续运行，这样就可视范围就不会出现卡顿范围
+// 暂定一帧不是一次事件循环，如果没有渲染的条件，那就在这一帧进入下一次事件循环
+// 我们一次事件循环可以执行一次宏任务，并且会执行尝试去执行渲染，但是是否渲染靠一些其他条件限制，刷新频率，当前tab是否激活等。在可以执行渲染的情况下(能不能渲染，由这一帧到没到时间控制)，执行raf.如果不能执行渲染，就进入下一次事件循环
+// (js没有事件循环这个概念，event loop是runtime提供的), 我们的react scheduler通过messageChannel和postmessage向
+// 宏任务队列推调度函数(我们的render就是在这里的),为什么不用settimeout 0，哪怕是0两个settimeout 0之间的间隙也有4ms左右，所以我们react向浏览器申请5ms的时间切片，当然如果这次render任务特别重超过了16.6ms，那么就会影响浏览器的渲染
+// 当我们申请的切片也就是宏任务被执行的时候，如果执行完了 将控制权交给渲染进程，如果还有时间，理论上执行3-4个时间切片，所以我们申请时间切片messageChannel和postmessage，然后浏览器自己有空闲时间才去调用我们的这个任务，否则他自己去
+// 执行渲染。
+// 为什么用宏任务模拟requestIdleCallback?宏任务是在下次事件循环中执行，不会阻塞浏览器更新。而且浏览器一次只会执行一个宏任务。首先看一下两种满足情况的宏任务
+// !!!todo如果通过优先级去做我们自己的任务调度 这个需要继续学习！！！
+
+// Scheduler的时间切片功能是通过task（宏任务）实现的(把render函数以及优先级放到scheduleCallback中，就是把render过程放到宏任务中去执行)。MessageChannel、setTimeout。
+// 时间切片的本质是模拟实现requestIdleCallback
+// 除去“浏览器重排/重绘”，下图是浏览器一帧中可以用于执行JS的时机。
+// 下面是一次事件循环
+// 一个task(宏任务) -- 队列中全部job(微任务) -- requestAnimationFrame -- 浏览器重排/重绘 -- requestIdleCallback   (ps:这里面每个都是宏任务)
+// requestIdleCallback是在“浏览器重排/重绘”后如果当前帧还有空余时间时被调用的。这样我们利用空闲时间，去执行我们的render，没有空闲时间就把线程交给渲染进程
+
+// ps: 帧
+// 在每16.6ms时间内，需要完成如下工作：
+// JS脚本执行 -----  样式布局 ----- 样式绘制(我们知道，JS可以操作DOM，GUI渲染线程与JS线程是互斥的。所以JS脚本执行和浏览器布局、绘制不能同时执行。)
+// 当JS执行时间过长，超出了16.6ms，这次刷新就没有时间执行样式布局和样式绘制了。
+// 如何解决? 在浏览器每一帧的时间中，预留一些时间给JS线程，React利用这部分时间更新组件（可以看到，在源码中，预留的初始时间是5ms）。
+// 当预留的时间不够用时，React将线程控制权交还给浏览器使其有时间渲染UI，React则等待下一帧时间到来继续被中断的工作。
+// 帧 是 浏览器的概念， 5ms 是 react的规定
+// 一帧大概是 16.6ms ， 里面可能包含1～多个宏任务
+// react一个切片是5ms，所以理论上一帧会执行4个左右切片
+// 如果某些组件render逻辑复杂，可能一个切片就大于 16.6ms， 那么一帧就一个切片
+// react 5ms中断一次，为了让浏览器看看这一帧用完没，没用完下个5ms还是同一帧
 
 // 在同步操作比如commitRoot的时候，点击事件触发，这个点击事件的回调会在commitRoot之后执行，相当于回调加入了任务队列进入了事件循环
 // ps:
@@ -98,7 +123,7 @@ const RootCompleted = 2;
 // 执行初始化的操作
 function prepareFreshStack(root: FiberRootNode, lane: Lane) {
 	// 如果有更高优先级的打断，我们会重新创建一颗workInProgress树，如果是同一优先级就不会走到这里，继续之前的wip render
-	// 如果高优先级执行完，再次回到调度低优先级的时候，会重新构建一颗workInProgress树
+	// 如果高优先级执行完，再次回到调度低优先级的时候，会重新构建一颗workInProgress树，打断了，高优先级执行完，仍然会执行低优先级的任务
 	root.finishedLane = NoLane;
 	root.finishedWork = null;
 	// FiberRootNode不是一个普通的fiberNode不能直接当作workInProgress，因此需要一个方法将fiberRootNode变为fiberNode

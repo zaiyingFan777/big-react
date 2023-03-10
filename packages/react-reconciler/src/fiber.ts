@@ -21,8 +21,8 @@ import { CallbackNode } from 'scheduler';
 // 对于函数组件memoizedState就是他的hook的单向链表，函数组件的updateQueue就是他的useEffect的环状链表
 
 // updateQueue：函数组件的updateQueue就是他的useEffect的环状链表
-// hostComponent的updateQueue是他的更新的属性比如[className, 'aaa', title, 'hahaha']
-// 属性的更新是在completeWork中完成的
+// hostComponent的updateQueue是他的更新的属性比如[className, 'aaa', title, 'hahaha']，属性的更新是在completeWork中完成的
+// hostRootFiber的updateQueue里的reactElement
 
 // pendingProps memoizedProps，计算完毕将pendingProps赋值给memoizedProps，比如hostComponent就是他的{children: xxx}或者onClick等
 // 对于function组件就是我们传递的props,里面也可能有children或者其他我们传递的props

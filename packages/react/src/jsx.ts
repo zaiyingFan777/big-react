@@ -38,13 +38,14 @@ export function isValidElement(object: any) {
 	);
 }
 
-// jsx方法
+// createElement方法
 // 只是积累: function a(x, y, ...z) {console.log(x, y, z)} a(1) => 1 undefined []，a(1, 2) => 1 2 [], a(1,2,3) => 1 2 [3]
-export const jsx = function (
+// 解决key消失
+export const createElement = (
 	type: ElementType,
 	config: any,
 	...maybeChildren: any
-) {
+) => {
 	// config中有key, ref我们需要单独处理一下
 	let key: Key = null;
 	const props: Props = {};
@@ -93,12 +94,17 @@ export const Fragment = REACT_FRAGMENT_TYPE;
 // 1.对于开发环境，jsxDEV参数依次为type、props、key、source、self。其中后两者为开发环境用于调试的参数
 // 2.对于生产环境，jsx参数依次为type、props、key
 // createElement的参数依次为type、props、...children。其中children及后续其他传参经过转换都会作为children属性
-export const jsxDEV = function (type: ElementType, config: any) {
+// export const jsxDEV = function (type: ElementType, config: any) {
+export const jsx = (type: ElementType, config: any, maybeKey: any) => {
 	// console.log(arguments); arguments[2]就是key
 	// config中有key, ref我们需要单独处理一下
 	let key: Key = null;
 	const props: Props = {};
 	let ref: Ref = null;
+
+	if (maybeKey !== undefined) {
+		key = '' + maybeKey;
+	}
 
 	// 遍历config的key赋值给props
 	for (const prop in config) {
@@ -123,3 +129,5 @@ export const jsxDEV = function (type: ElementType, config: any) {
 	}
 	return ReactElement(type, key, ref, props);
 };
+
+export const jsxDEV = jsx;
