@@ -106,6 +106,8 @@ export const processUpdateQueue = <State>(
 		do {
 			// 拿到update中的Lane
 			const updateLane = pending.lane;
+			// 我们比较优先级，并不是 「lane数值大小的直接比较」，而是判断是否有交集
+			// 所以 syncLane 虽然比 DefaultLane 优先级高， 但我们并不是直接比较他两， 而是将他两和我们本次更新的 优先级进行比较
 			if (!isSubsetOfLanes(renderLane, updateLane)) {
 				// 优先级不够，被跳过
 				const clone = createUpdate(pending.action, pending.lane);

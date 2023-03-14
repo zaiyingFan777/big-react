@@ -293,6 +293,15 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		return firstNewFiber;
 	}
 
+	// 兼容数组的情况，key为undefined，取索引
+	// fragment array没有key
+	function getElementKeyToUse(element: any, index?: number): Key {
+		if (Array.isArray(element)) {
+			return index;
+		}
+		return element.key !== null ? element.key : index;
+	}
+
 	function updateFromMap(
 		returnFiber: FiberNode,
 		existingChildren: ExistingChildren,
@@ -300,11 +309,7 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		element: any
 	): FiberNode | null {
 		// 有Key用Key,反之用索引位置
-		let keyToUse = element.key !== null ? element.key : index;
-		// 兼容数组的情况，key为undefined，取索引
-		if (Array.isArray(element)) {
-			keyToUse = index;
-		}
+		const keyToUse = getElementKeyToUse(element, index);
 		// 获取当前的fiber节点
 		const before = existingChildren.get(keyToUse);
 		// element(newChild)是HostText，current fiber是么？
@@ -367,11 +372,6 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 					}
 					// 创建新节点
 					return createFiberFromElement(element);
-			}
-			// TODO 数组类型
-			// TODO element是数组或Fragment，current fiber是么？
-			if (Array.isArray(element) && __DEV__) {
-				console.warn('还未实现数组类型的child');
 			}
 		}
 
