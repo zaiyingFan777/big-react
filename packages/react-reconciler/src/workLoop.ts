@@ -430,9 +430,12 @@ function commitRoot(root: FiberRootNode) {
 
 	// 判断是否存在3个子阶段需要执行的操作
 	// 1.root flags 2.root subtreeFlags
+	// 解决deps变化不再更新的问题
+	// 这里解决了useEffect回调不收集的情况，因为effect是在commit阶段塞到root.pendingPassiveEffects里的，下面的不加的话，就无法进入commit阶段了
 	const subtreeHasEffect =
-		(finishedWork.subtreeFlags & MutationMask) !== NoFlags; // 我有插入操作 a = 0; a |= 2;（a为2） a & MutationMask(22) => 2，如果我没有标记 0 & 22 => 0(NoFlags)
-	const rootHasEffect = (finishedWork.flags & MutationMask) !== NoFlags;
+		(finishedWork.subtreeFlags & (MutationMask | PassiveMask)) !== NoFlags; // 我有插入操作 a = 0; a |= 2;（a为2） a & MutationMask(22) => 2，如果我没有标记 0 & 22 => 0(NoFlags)
+	const rootHasEffect =
+		(finishedWork.flags & (MutationMask | PassiveMask)) !== NoFlags;
 
 	// root的subtreeFlags或者flags是否包含MutationMask指定的flag，如果包含，代表当前存在mutation执行的操作
 	if (subtreeHasEffect || rootHasEffect) {
