@@ -182,11 +182,15 @@ function ensureRootIsScheduled(root: FiberRootNode) {
 
 	let newCallbackNode = null;
 
+	if (__DEV__) {
+		console.log(
+			`在${updateLane === SyncLane ? '微任务' : '宏任务'}中调度，优先级：`,
+			updateLane
+		);
+	}
+
 	if (updateLane === SyncLane) {
 		// 同步优先级 用微任务调度
-		if (__DEV__) {
-			console.log('在微任务中调度，优先级：', updateLane);
-		}
 		// 比如下面的点击事件会触发三个更新
 		// const onClick = () => {
 		// 	// 创建3个update
@@ -339,7 +343,8 @@ function renderRoot(root: FiberRootNode, lane: Lane, shouldTimeSlice: boolean) {
 	if (__DEV__) {
 		console.log(
 			`render阶段开始，开始${shouldTimeSlice ? '并发' : '同步'}更新`,
-			root
+			root,
+			lane
 		);
 	}
 

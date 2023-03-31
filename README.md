@@ -308,3 +308,8 @@ big-react中package.json
 "@vitejs/plugin-react": "^3.0.0",
 "vite": "^4.0.0"
 ```
+
+## 更新记录
+
+2023/3/31
+由于引入了 scheduler 包，导致调试的过程会出现串行，这里我们可以在调试的时候将浏览器的 sourcemap 功能关掉

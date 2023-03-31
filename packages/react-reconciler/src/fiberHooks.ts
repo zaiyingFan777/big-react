@@ -2,6 +2,7 @@ import internals from 'shared/internals';
 import { FiberNode } from './fiber';
 import { Dispatcher } from 'react/src/currentDispatcher';
 import { Dispatch } from 'react/src/currentDispatcher';
+import currentBatchConfig from 'react/src/currentBatchConfig';
 import {
 	UpdateQueue,
 	createUpdateQueue,
@@ -29,6 +30,8 @@ const { currentDispatcher } = internals;
 // hooks的数据结构
 interface Hook {
 	// 对于useState，memoizedState保存的是状态
+	// 对于useEffect，memoizedState保存的是Effect数据结构
+	// 对于useTransition，memoizedState保存的是
 	memoizedState: any;
 	updateQueue: unknown;
 	next: Hook | null;
@@ -100,13 +103,15 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 // mount流程时的dispatch
 const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
-	useEffect: mountEffect
+	useEffect: mountEffect,
+	useTransition: mountTransition
 };
 
 // update流程时的dispatch
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
-	useEffect: updateEffect
+	useEffect: updateEffect,
+	useTransition: updateTransition
 };
 
 // !!!注意：useEffect: render阶段发现fiber中存在PassiveEffect(存在需要执行的副作用),在commit阶段首先要调度副作用，调度一个回调函数的执行，为什么要调度？因为useEffect是一个异步的过程
@@ -267,19 +272,19 @@ function updateState<State>(): [State, Dispatch<State>] {
 		current.baseQueue = pending;
 		// 置空
 		queue.shared.pending = null;
+	}
 
-		if (baseQueue !== null) {
-			// 计算新值
-			// hook.memoizedState是baseState
-			const {
-				memoizedState,
-				baseQueue: newBaseQueue,
-				baseState: newBaseState
-			} = processUpdateQueue(baseState, baseQueue, renderLane);
-			hook.memoizedState = memoizedState;
-			hook.baseState = newBaseState;
-			hook.baseQueue = newBaseQueue;
-		}
+	if (baseQueue !== null) {
+		// 计算新值
+		// hook.memoizedState是baseState
+		const {
+			memoizedState,
+			baseQueue: newBaseQueue,
+			baseState: newBaseState
+		} = processUpdateQueue(baseState, baseQueue, renderLane);
+		hook.memoizedState = memoizedState;
+		hook.baseState = newBaseState;
+		hook.baseQueue = newBaseQueue;
 	}
 
 	return [hook.memoizedState, queue.dispatch as Dispatch<State>];
@@ -373,6 +378,8 @@ function mountState<State>(
 	const queue = createUpdateQueue<State>();
 	hook.updateQueue = queue;
 	hook.memoizedState = memoizedState;
+	// 初始化的时候，也需要将memoizedState计算的值赋值给baseState，不然会导致他成null
+	hook.baseState = memoizedState;
 
 	// 这里为何使用bind,
 	// function App() {
@@ -439,4 +446,57 @@ function mountWorkInProgressHook(): Hook {
 		workInProgressHook = hook;
 	}
 	return workInProgressHook;
+}
+
+// 实现useTransition 切换UI时，先显示旧的UI，待新的UI加载完成后再显示新的UI。也就是不会阻塞ui，因为开启后为并发更新
+
+// useTransition的作用翻译成源码术语：
+// 切换UI -> 触发更新
+// 先显示旧的UI，待新的UI加载完成后再显示新的UI -> 「切换新UI」对应低优先级更新
+
+// 实现的要点：
+// 实现基础hook工作流程
+// 实现Transition优先级
+// useTransition的实现细节
+
+// useTransition两个返回值 第一个boolean是否在tranition中，第二个就是函数
+// mount
+function mountTransition(): [boolean, (callback: () => void) => void] {
+	const [isPending, setPending] = mountState(false);
+	const hook = mountWorkInProgressHook();
+	const start = startTransition.bind(null, setPending);
+	// 将start保存在hook上
+	hook.memoizedState = start;
+	return [isPending, start];
+}
+
+// update
+function updateTransition(): [boolean, (callback: () => void) => void] {
+	// 从hook中取到start
+	const [isPending] = updateState();
+	const hook = updateWorkInProgressHook();
+	const start = hook.memoizedState;
+	return [isPending as boolean, start];
+}
+
+//  useTransition 内部包含了 useState(setPending)、hook(第二个参数的回调函数)
+//  startTransition 触发三次更新
+//  setPending(true) 同步优先级
+//  改变优先级 ---------------
+//  callback() 里面还可能包含setState 但都是transitionLane
+//  setPending(false) transitionLane
+//  还原优先级 ---------------
+// callback开发者传递的回调函数
+function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
+	setPending(true);
+	// 获取之前的transition并保存
+	const preTransition = currentBatchConfig.transition;
+	// 进入当前的transition
+	currentBatchConfig.transition = 1;
+
+	callback();
+	setPending(false);
+
+	// 回到之前的transition
+	currentBatchConfig.transition = preTransition;
 }

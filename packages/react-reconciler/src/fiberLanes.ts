@@ -6,6 +6,7 @@ import {
 	unstable_getCurrentPriorityLevel
 } from 'scheduler';
 import { FiberRootNode } from './fiber';
+import ReactCurrentBatchConfig from 'react/src/currentBatchConfig';
 
 // lane：二进制的数字，作为update的优先级
 export type Lane = number;
@@ -18,15 +19,16 @@ export type Lanes = number;
 
 // 代表同步的优先级
 // 优先级数字越小 优先级越高
-export const SyncLane = 0b0001; // 1
-// 连续的输入，比如拖拽，点击事件属于离散的
-export const InputContinuousLane = 0b0010; // 2
-export const DefaultLane = 0b0100; // 4
-// 空闲的
-export const IdleLane = 0b1000; // 8
 // 代表没有优先级
-export const NoLane = 0b0000;
-export const NoLanes = 0b0000;
+export const NoLane = 0b00000; // 0
+export const NoLanes = 0b00000;
+export const SyncLane = 0b00001; // 1
+// 连续的输入，比如拖拽，点击事件属于离散的
+export const InputContinuousLane = 0b00010; // 2
+export const DefaultLane = 0b00100; // 4
+export const TransitionLane = 0b01000; // 8
+// 空闲的
+export const IdleLane = 0b10000; // 16
 
 export function mergeLanes(laneA: Lane, laneB: Lane): Lanes {
 	// 按位或：对于每一个比特位，当两个操作数相应的比特位至少有一个1时，结果为1，否则为0。
@@ -34,8 +36,14 @@ export function mergeLanes(laneA: Lane, laneB: Lane): Lanes {
 }
 
 export function requestUpdateLane() {
+	// 判断transition的逻辑
+	const isTransition = ReactCurrentBatchConfig.transition !== null;
+	if (isTransition) {
+		// 在transition中，我们需要返回transitionLane
+		return TransitionLane;
+	}
 	// 从上下文环境中获取Scheduler优先级，如果是首屏渲染获取的是默认的优先级,点击事件是同步的，修改当前环境的优先级为同步，然后setState的时候调用此方法，获取优先级为同步
-	const currentSchedulerPriority = unstable_getCurrentPriorityLevel();
+	const currentSchedulerPriority = unstable_getCurrentPriorityLevel(); // 从调度器中获取优先级，正常获取的是默认的优先级会开启并发更新
 	// 将当前的Scheduler优先级转换为lane
 	const lane = schedulerPriorityToLane(currentSchedulerPriority);
 	return lane;
