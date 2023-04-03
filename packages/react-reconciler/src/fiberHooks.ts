@@ -451,6 +451,9 @@ function mountWorkInProgressHook(): Hook {
 // 实现useTransition 切换UI时，先显示旧的UI，待新的UI加载完成后再显示新的UI。也就是不会阻塞ui，因为开启后为并发更新
 
 // useTransition的作用翻译成源码术语：
+// ps: 比如demo中的例子我切换tab遇到耗时的操作，我没有立即切换到对应页面，因为我是transitionLane，
+// 并发更新，我在内存中构建好了再切换过去(哪怕是同步优先级也是这样，在内存中构建好了再切换，)。并且不影响我高优先级的操作（这点是对的，不影响更高优先级的操作），
+// 比如hover的效果 如果不是transitionLane，是同步优先级，那就会影响其他的操作
 // 切换UI -> 触发更新
 // 先显示旧的UI，待新的UI加载完成后再显示新的UI -> 「切换新UI」对应低优先级更新
 
