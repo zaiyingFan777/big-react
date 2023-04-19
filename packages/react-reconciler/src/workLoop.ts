@@ -201,6 +201,8 @@ function ensureRootIsScheduled(root: FiberRootNode) {
 		// 每触发一次更新数组多一个回调
 		// 得到[performSyncWorkOnRoot, performSyncWorkOnRoot, performSyncWorkOnRoot]
 		// 每次更行都会将performSyncWorkOnRoot放到数组里[performSyncWorkOnRoot, performSyncWorkOnRoot]
+		// bind: function test(a,b) {console.log(a,b)}; var test2 = test.bind(null, 1); test2() => 打印1,undefined; test2(2) => 打印1,2
+		// var test3 = test.bind(null, 1, 2); test3() => 打印1,2
 		scheduleSyncCallback(performSyncWorkOnRoot.bind(null, root, updateLane));
 		// 会在微任务中执行三次flushSyncCallbacks，但是只会进第一次，因为有全局变量isFlushingSyncQueue，后边两次都直接执行以下就退出了
 		scheduleMicroTask(flushSyncCallbacks);

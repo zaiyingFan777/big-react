@@ -28,6 +28,8 @@ import { HookHasEffect } from './hookEffectTags';
 
 let nextEffect: FiberNode | null = null;
 
+// DFS，1.深度遍历找到含有XXXMask的flag的最低一层的fiberNode，或者到了叶子节点，然后执行commitMutaitonEffectsOnFiber，
+// 2.找到兄弟节点 继续开始往下找，找不到则找父节点执行commitMutaitonEffectsOnFiber
 export const commitMutationEffects = (
 	finishedWork: FiberNode,
 	root: FiberRootNode

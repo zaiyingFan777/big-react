@@ -108,6 +108,11 @@ export const processUpdateQueue = <State>(
 			const updateLane = pending.lane;
 			// 我们比较优先级，并不是 「lane数值大小的直接比较」，而是判断是否有交集
 			// 所以 syncLane 虽然比 DefaultLane 优先级高， 但我们并不是直接比较他两， 而是将他两和我们本次更新的 优先级进行比较
+			// !!!2023/4/19 新理解：renderLane是我们现在进行的lane比如我们正在运行默认优先级，这时候点击事件进来一个同步优先级，renderLane变为同步优先级
+			// 点击事件执行dispatch就是将这次的同步更新的action 合并到了 baseQueue的最后一位，正好她俩对应同一个fiber,
+			// 我们执行beginWork diff 然后通过processUpdateQueue执行的时候 这时候我们取到当前的更新优先级 以及 当前pendingUpdate环形链表的第一个优先级不够跳过，直到碰到咱们刚进的同步优先级，
+			// 这时候就能判断 isSubsetOfLanes是存在交集的
+			// updateState中合并两条链表：比如上面执行完同步优先级，后执行之前被打断的优先级，需要合并两条链表(1.baseQueue被跳过的2.pendingQueue这次新进来的)(如果没有新的action进来那就是上次被跳过的一条链表) 然后再执行被打断的默认的优先级
 			if (!isSubsetOfLanes(renderLane, updateLane)) {
 				// 优先级不够，被跳过
 				const clone = createUpdate(pending.action, pending.lane);
