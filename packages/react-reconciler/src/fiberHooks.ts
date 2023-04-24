@@ -31,7 +31,7 @@ const { currentDispatcher } = internals;
 interface Hook {
 	// 对于useState，memoizedState保存的是状态
 	// 对于useEffect，memoizedState保存的是Effect数据结构
-	// 对于useTransition，memoizedState保存的是
+	// 对于useTransition，memoizedState保存的是startTransition函数
 	memoizedState: any;
 	updateQueue: unknown;
 	next: Hook | null;
@@ -104,15 +104,32 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
 	useEffect: mountEffect,
-	useTransition: mountTransition
+	useTransition: mountTransition,
+	useRef: mountRef
 };
 
 // update流程时的dispatch
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
 	useEffect: updateEffect,
-	useTransition: updateTransition
+	useTransition: updateTransition,
+	useRef: updateRef
 };
+
+// re = useRef(null)
+function mountRef<T>(initialValue: T): { current: T } {
+	// 获取当前的hook
+	const hook = mountWorkInProgressHook();
+	const ref = { current: initialValue };
+	hook.memoizedState = ref;
+	return ref;
+}
+
+function updateRef<T>(): { current: T } {
+	// 获取当前的hook
+	const hook = updateWorkInProgressHook();
+	return hook.memoizedState;
+}
 
 // !!!注意：useEffect: render阶段发现fiber中存在PassiveEffect(存在需要执行的副作用),在commit阶段首先要调度副作用，调度一个回调函数的执行，为什么要调度？因为useEffect是一个异步的过程
 // 要先进行调度的过程，调度完以后再同步收集回调，收集什么回调？收集当前这个useEffect他会触发哪些回调，收集完等commit结束后，再去异步的执行副作用。

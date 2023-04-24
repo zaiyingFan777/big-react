@@ -19,6 +19,8 @@ import { CallbackNode } from 'scheduler';
 // memoizedState 对于不同类型的fiber意义不一样
 // 对于hostRootFiber 它就是根组件对应的reactElement，hostRoot将updateQueue里的reactElement计算完毕后赋值给memoizedState
 // 对于函数组件memoizedState就是他的hook的单向链表，函数组件的updateQueue就是他的useEffect的环状链表
+// 对于函数组件hook的memoizedState也能保存startTransition函数
+// 对于hostComponent组件memoizedState保存有他的ref
 
 // updateQueue：函数组件的updateQueue就是他的useEffect的环状链表
 // hostComponent的updateQueue是他的更新的属性比如[className, 'aaa', title, 'hahaha']，属性的更新是在completeWork中完成的
@@ -158,12 +160,13 @@ export const createWorkInProgress = (
 	wip.child = current.child;
 	wip.memoizedProps = current.memoizedProps;
 	wip.memoizedState = current.memoizedState;
+	wip.ref = current.ref;
 
 	return wip;
 };
 
 export function createFiberFromElement(element: ReactElementType): FiberNode {
-	const { type, key, props } = element;
+	const { type, key, props, ref } = element;
 	let fiberTag: WorkTag = FunctionComponent;
 
 	if (typeof type === 'string') {
@@ -174,6 +177,7 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 	}
 	const fiber = new FiberNode(fiberTag, props, key);
 	fiber.type = type;
+	fiber.ref = ref;
 	return fiber;
 }
 

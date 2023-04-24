@@ -13,7 +13,12 @@ import {
 	HostRoot,
 	HostText
 } from './workTags';
-import { NoFlags, Update } from './fiberFlags';
+import { NoFlags, Ref, Update } from './fiberFlags';
+
+// 标记ref
+function markRef(fiber: FiberNode) {
+	fiber.flags |= Ref;
+}
 
 // 标记更新的方法
 function markUpdate(fiber: FiberNode) {
@@ -39,6 +44,10 @@ export const completeWork = (wip: FiberNode) => {
 				// 将事件回调保存在DOM中，通过以下两个时机对接：1.创建dom时，2.更新属性时
 				// 这里是更新dom
 				markUpdate(wip);
+				// 标记ref update：ref引用变化
+				if (current.ref !== wip.ref) {
+					markRef(wip);
+				}
 			} else {
 				// 首屏mount
 				// 1.构建离屏DOM
@@ -47,6 +56,10 @@ export const completeWork = (wip: FiberNode) => {
 				// 2.将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				wip.stateNode = instance;
+				// 标记ref mount: 存在ref
+				if (wip.ref !== null) {
+					markRef(wip);
+				}
 			}
 			bubbleProperties(wip);
 			return null;

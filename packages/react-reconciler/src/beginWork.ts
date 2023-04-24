@@ -13,6 +13,7 @@ import {
 import { reconcileChildFibers, mountChildFibers } from './childFibers';
 import { renderWithHooks } from './fiberHooks';
 import { Lane } from './fiberLanes';
+import { Ref } from './fiberFlags';
 
 // 对于如下结构的reactElement：
 // <A>
@@ -96,6 +97,8 @@ function updateHostComponent(wip: FiberNode) {
 	// <div><span></span></div> <span></span>节点对应的ReactElement就是<div></div>的ReactElement的children，children在div的props里
 	const nextProps = wip.pendingProps;
 	const nextChildren = nextProps.children;
+	// 标记ref
+	markRef(wip.alternate, wip);
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }
@@ -133,5 +136,18 @@ function reconcileChildren(wip: FiberNode, children?: ReactElementType) {
 		// mount 不需要追踪副作用
 		// 对于首屏渲染，hostRootFiber.child(APP) APP的挂载走这里
 		wip.child = mountChildFibers(wip, null, children);
+	}
+}
+
+// 标记ref
+function markRef(current: FiberNode | null, workInProgress: FiberNode) {
+	const ref = workInProgress.ref;
+
+	// mount时存在ref 或者 update时 ref引用变化
+	if (
+		(current === null && ref !== null) ||
+		(current !== null && current.ref !== ref)
+	) {
+		workInProgress.flags |= Ref;
 	}
 }

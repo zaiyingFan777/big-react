@@ -5,6 +5,7 @@ import {
 	commitHookEffectListCreate,
 	commitHookEffectListDestory,
 	commitHookEffectListUnmount,
+	commitLayoutEffects,
 	commitMutationEffects
 } from './commitWork';
 import { completeWork } from './completeWork';
@@ -446,19 +447,20 @@ function commitRoot(root: FiberRootNode) {
 
 	// root的subtreeFlags或者flags是否包含MutationMask指定的flag，如果包含，代表当前存在mutation执行的操作
 	if (subtreeHasEffect || rootHasEffect) {
-		// beforeMutation阶段
+		// 阶段1/3:beforeMutation阶段
 
-		// mutation阶段 Placement，包含了收集副作用
+		// 阶段2/3:mutation阶段 Placement，包含了收集副作用
 		commitMutationEffects(finishedWork, root);
 		// fiber树的切换
 		// !!!注意，初次mount的时候，hostRootFiber.alternate就是workInProgress，我们先给workInProgress构建出来一整棵树，然后在commit过程切换，将root.current变为workInProgress成为了current，
 		// 这时候current.alternate就变为了最初没有子节点没有被处理的hostRootFiber
 		// !!!注意，第一次update调用setState的时候，hostRootFiber(current)的alternate(child为null)是存在的，然后createWorkInProgress wip是存在的，但是他的可以复用的子节点useFiber->createWorkInProgress 子节点的alternate都为null(这种仅限于更新内容没有删除新增操作)，需要在createWorkInProgress重新建立FiberNode
 		// !!!注意，第二次update调用setState的时候，只要是更新，所有的current的alternate都是可以复用的就不会再执行createWorkInProgress
-		// TODO
+		// Fiber Tree切换
 		root.current = finishedWork;
 
-		// layout阶段
+		// 阶段3/3:layout阶段 这时候wip fiber已经成为了current fiber
+		commitLayoutEffects(finishedWork, root);
 	} else {
 		// 不存在对应的操作
 		// fiber树的切换

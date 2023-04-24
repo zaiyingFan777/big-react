@@ -7,8 +7,11 @@ export const ChildDeletion = 0b00000000000000000000010000; // 16 删除子节点
 
 // useEffect
 export const PassiveEffect = 0b00000000000000000000100000; // 32 代表当前fiber上本次更新存在需要触发useEffect的情况
+// 标记ref: beginWork、completeWork
+export const Ref = 0b00000000000000000001000000; // 64
 
-export const MutationMask = Placement | Update | ChildDeletion; // 22
+export const MutationMask = Placement | Update | ChildDeletion | Ref; // 86
+export const LayoutMask = Ref; // 64
 
 // function App() {
 //   useEffect(() => {
