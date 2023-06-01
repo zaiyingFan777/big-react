@@ -4,6 +4,7 @@ import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { UpdateQueue, processUpdateQueue } from './updateQueue';
 import {
+	ContextProvider,
 	Fragment,
 	FunctionComponent,
 	HostComponent,
@@ -14,6 +15,7 @@ import { reconcileChildFibers, mountChildFibers } from './childFibers';
 import { renderWithHooks } from './fiberHooks';
 import { Lane } from './fiberLanes';
 import { Ref } from './fiberFlags';
+import { pushProvider } from './fiberContext';
 
 // 对于如下结构的reactElement：
 // <A>
@@ -45,6 +47,8 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 			return updateFunctionComponent(wip, renderLane);
 		case Fragment:
 			return updateFragment(wip);
+		case ContextProvider:
+			return updateContextProvider(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型');
@@ -53,6 +57,72 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	}
 	return null;
 };
+
+// context.provider context入栈
+function updateContextProvider(wip: FiberNode) {
+	// todo自己的逻辑 context当前值的入栈（beginWork向下遍历是很好的入栈过程）与出栈（completeWork是向上遍历的过程）
+	// wip.type
+	// context.Provider = {
+	// 	$$typeof: REACT_PROVIDER_TYPE,
+	// 	_context: context
+	// };
+	const providerType = wip.type;
+	const context = providerType._context;
+	const oldProps = wip.memoizedProps;
+	// <ctx.Provider value={0}>
+	// 	<Child />
+	// 	<ctx.Provider value={1}>
+	// 		<Child />
+	// 		<ctx.Provider value={2}>
+	// 			<Child />
+	// 		</ctx.Provider>
+	// 	</ctx.Provider>
+	// </ctx.Provider>
+	// props代表了value={0}以及children
+	const newProps = wip.pendingProps;
+	const newValue = newProps.value;
+	// <ctx.Provider>没有传value
+	if (__DEV__ && !('value' in newProps)) {
+		console.warn('<Context.Provider>需要传递value props');
+	}
+	if (newValue !== oldProps?.value) {
+		// const ctx = createContext(null);
+		// function App() {
+		// 	const [num, update] = useState(0);
+		// 	return (
+		// 		<ctx.Provider value={num}>
+		// 				<div onClick={() => update(Math.random())}>
+		// 					<Middle />
+		// 				</div>
+		// 		</ctx.Provider>
+		// 	);
+		// }
+		// class Middle extends Component {
+		// 		shouldComponentUpdate() {
+		// 				return false;
+		// 		}
+		// 		render() {
+		// 				return <Child />;
+		// 		}
+		// }
+		// function Child() {
+		// 	const val = useContext(ctx);
+		// 	return <p>{val}</p>;
+		// }
+		// TODO 应对上面面这种情况，Middle组件不需要更新Child组件也不需要（因为bailout存在的原因，所以middle（shouldComponentUpdate return false;）以及后面的组件都不更新，这属于优化策略），
+		// 但是context变了，child组件又消费了context，所以需要像下面的描述那样去操作。ps：如果shouldComponentUpdate返回true，middle、chldren组件会一直走diff流程
+		// context.value变化
+		// 从Provider向下DFS，寻找消费了当前变化的context的consumer
+		// 如果找到consumer，从consumer向上便遍历到Provider
+		// 标记沿途组件存在更新
+	}
+
+	// context入栈过程
+	pushProvider(context, newValue);
+	const nextChildren = newProps.children; // pendingProps: {children: {$$typeof..}, value: 0} 这里我们去diff的是children
+	reconcileChildren(wip, nextChildren);
+	return wip.child;
+}
 
 // fragment组件
 function updateFragment(wip: FiberNode) {

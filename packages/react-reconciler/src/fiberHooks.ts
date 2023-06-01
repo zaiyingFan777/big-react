@@ -11,7 +11,7 @@ import {
 	processUpdateQueue,
 	Update
 } from './updateQueue';
-import { Action } from 'shared/ReactTypes';
+import { Action, ReactContext } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
@@ -105,7 +105,8 @@ const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
 	useEffect: mountEffect,
 	useTransition: mountTransition,
-	useRef: mountRef
+	useRef: mountRef,
+	useContext: readContext
 };
 
 // update流程时的dispatch
@@ -113,7 +114,8 @@ const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
 	useEffect: updateEffect,
 	useTransition: updateTransition,
-	useRef: updateRef
+	useRef: updateRef,
+	useContext: readContext
 };
 
 // re = useRef(null)
@@ -519,4 +521,15 @@ function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
 
 	// 回到之前的transition
 	currentBatchConfig.transition = preTransition;
+}
+
+// useContext
+function readContext<T>(context: ReactContext<T>) {
+	const consumer = currentlyRenderingFiber;
+	// 在函数组件之外调用了useContext或者useEffect内部调用了useContext
+	if (consumer === null) {
+		throw new Error('context需要有consumer');
+	}
+	const value = context._currentValue;
+	return value;
 }

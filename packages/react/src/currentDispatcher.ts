@@ -1,4 +1,4 @@
-import { Action } from 'shared/ReactTypes';
+import { Action, ReactContext } from 'shared/ReactTypes';
 
 // 当前使用的hooks的集合
 // const [num, updateNum] = useState(0); // 0 对应了泛型中的T(状态)
@@ -10,6 +10,7 @@ export interface Dispatcher {
 	useEffect: (callback: () => void | void, deps: any[] | void) => void;
 	useTransition: () => [boolean, (callback: () => void) => void];
 	useRef: <T>(initialState: T) => { current: T };
+	useContext: <T>(context: ReactContext<T>) => T;
 }
 
 export type Dispatch<State> = (action: Action<State>) => void;

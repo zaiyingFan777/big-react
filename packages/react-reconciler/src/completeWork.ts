@@ -7,6 +7,7 @@ import {
 } from 'hostConfig';
 import { FiberNode } from './fiber';
 import {
+	ContextProvider,
 	Fragment,
 	FunctionComponent,
 	HostComponent,
@@ -14,6 +15,7 @@ import {
 	HostText
 } from './workTags';
 import { NoFlags, Ref, Update } from './fiberFlags';
+import { popProvider } from './fiberContext';
 
 // 标记ref
 function markRef(fiber: FiberNode) {
@@ -83,7 +85,14 @@ export const completeWork = (wip: FiberNode) => {
 		case FunctionComponent:
 		case Fragment:
 			bubbleProperties(wip);
-			return;
+			return null;
+		case ContextProvider:
+			// context
+			const context = wip.type._context;
+			// context出栈
+			popProvider(context);
+			bubbleProperties(wip);
+			return null;
 		default:
 			if (__DEV__) {
 				console.warn('未处理的completeWork情况', wip);

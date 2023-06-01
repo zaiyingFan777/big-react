@@ -8,6 +8,9 @@ import {
 	createElement as createElementFn,
 	isValidElement as isValidElementFn
 } from './src/jsx'; // 报错 [!] RollupError: Could not resolve "./src/jsx" from "packages/react/index.ts"
+import { ReactContext } from 'shared/ReactTypes';
+// 导出context
+export { createContext } from './src/context';
 
 // 当前使用的hooks的集合
 // 提供hooks接口，react中提供的hooks其实是内部调用了dispatcher对应的hooks的实现，mount、update、hooks上下文（这些在react-reconciler包中具体实现）中的hooks具体实现不一样
@@ -29,6 +32,13 @@ export const useTransition: Dispatcher['useTransition'] = () => {
 export const useRef: Dispatcher['useRef'] = (initialValue) => {
 	const dispatcher = resolveDispatcher();
 	return dispatcher.useRef(initialValue);
+};
+
+export const useContext: Dispatcher['useContext'] = <T>(
+	context: ReactContext<T>
+) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.useContext(context);
 };
 
 // hooks所在的内部数据共享层

@@ -1,6 +1,7 @@
 // 存放FiberNode的文件
 import { Props, Key, Ref, ReactElementType } from 'shared/ReactTypes';
 import {
+	ContextProvider,
 	Fragment,
 	FunctionComponent,
 	HostComponent,
@@ -11,6 +12,7 @@ import { Container } from 'hostConfig';
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
 import { CallbackNode } from 'scheduler';
+import { REACT_PROVIDER_TYPE } from 'shared/ReactSymbols';
 
 // reconciler的工作方式
 // 对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
@@ -170,8 +172,15 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 	let fiberTag: WorkTag = FunctionComponent;
 
 	if (typeof type === 'string') {
-		// <div></div> ReactElementType type: 'div'
+		// dom: <div></div> ReactElementType type: 'div'
+		// 函数组件jsx的type是函数本身
 		fiberTag = HostComponent;
+	} else if (
+		typeof type === 'object' &&
+		type.$$typeof === REACT_PROVIDER_TYPE
+	) {
+		// provider
+		fiberTag = ContextProvider;
 	} else if (typeof type !== 'function' && __DEV__) {
 		console.warn('未定义的type类型', element);
 	}
