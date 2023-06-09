@@ -133,6 +133,11 @@ function updateFragment(wip: FiberNode) {
 
 // 函数组件
 function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
+	// 2023/6/5 关于编译
+	// function App(flag) {return flag ? A组件 : B组件}
+	// 比如这样的app函数组件，如果build就把a b的jsx都编译好了，无非就是运行时根据不同的flag来return对应的组件生成的已经在build编译好的jsx，并且将值代入生成jsx(xx,yy)
+	// 这个jsx正是我们实现的jsx方法，然后执行jsx(xx,yy)，生成ReactElement, current fiber与ReactElement diff生成 wip fiber
+
 	// App的children就是img组件，如何得到img组件，调用App()组件即可
 	// function App() {
 	// 	return <img/>;

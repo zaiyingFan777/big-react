@@ -481,6 +481,17 @@ function commitRoot(root: FiberRootNode) {
 // 整体执行流程包括：
 // 1.遍历effect
 // 2.首先触发所有unmount effect，且对于某个fiber，如果触发了unmount destroy，本次更新不会再触发update create
+// 对于2的解释，我们收集的fiber的effect链表，里面有各种useEffect，有的deps是[]，有的deps中是[xxx]，因此我们收集到的effect数组中比如Unmount数组，就将一个fiber的updateQueue放到unmount数组里
+// 对于其中一个effect链表，如果组件销毁我们会遍历这个effect链表，像下面这两种 组件unmount的时候会打印，"Child unmount"以及("Child num destroy", 1)。然后后面的create都不会再执行了.因为我们会在
+// commitHookEffectListUnmount方法里移除effect链表中的每个effect.tag中的HookHasEffect = 0b0001，哪怕后面commitHookEffectListCreate再执行因为tag变了也不会执行effect中有HookHasEffect的useEffect
+// useEffect(() => {
+// 	console.log("Child mount");
+// 	return () => console.log("Child unmount");
+// }, []);
+// useEffect(() => {
+// 	console.log("Child num change", num);
+// 	return () => console.log("Child num destroy", num);
+// }, [num]);
 // 3.触发所有上次更新的destroy
 // 4.触发所有这次更新的create
 function flushPassiveEffects(pendingPassiveEffects: PendingPassiveEffects) {
