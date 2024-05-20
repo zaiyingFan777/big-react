@@ -83,6 +83,8 @@ export class FiberNode {
 		// 作为工作单元
 		this.pendingProps = pendingProps; // 工作单元刚开始工作的时候的props是什么
 		this.memoizedProps = null; // 工作单元结束工作完后确定的props是什么
+		// completeWork中update在updateHostComponent内部，被处理完的props会被赋值给workInProgress.updateQueue
+		// 其中updatePayload为数组形式，他的偶数索引的值为变化的prop key，奇数索引的值为变化的prop value。
 		this.updateQueue = null;
 		this.memoizedState = null;
 

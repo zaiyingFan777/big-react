@@ -495,5 +495,7 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 	};
 }
 
+// mountChildFibers与reconcileChildFibers这两个方法的逻辑基本一致。
+// 唯一的区别是：reconcileChildFibers会为生成的Fiber节点带上effectTag属性，而mountChildFibers不会。
 export const reconcileChildFibers = ChildReconciler(true); // 需要追踪更新
 export const mountChildFibers = ChildReconciler(false); // 不需要追踪更新，构建一颗离屏dom树，优化策略，对我们的根节点执行一次placement，直接将离屏dom树插入页面
