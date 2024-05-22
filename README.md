@@ -265,6 +265,15 @@ pnpm i -D -w rollup-plugin-generate-package-json
 cd dist/node_modules/react
 pnpm link --global(报错的话 先pnpm setup，重启终端即可)
 
+```
+
+pnpm link --global
+ ERR_PNPM_REGISTRIES_MISMATCH  This modules directory was created using the following registries configuration: {"default":"https://registry.npm.taobao.org/"}.
+The current configuration is {"default":"https://registry.npmjs.org/"}. To recreate the modules directory using the new settings, run "pnpm install".
+
+```
+解决办法：pnpm link react (这样可以绕过全局注册表配置的不匹配问题，但需要对每个项目单独操作。)
+
 // 第二步，使用create-react-app创建新的目录
 npx create-react-app react-demo
 cd react-demo

@@ -69,6 +69,10 @@ importers:
       typescript: registry.npmmirror.com/typescript/4.9.4
       vite: registry.npmmirror.com/vite/4.0.4
 
+  dist/node_modules/react:
+    specifiers:
+      react: ^1.0.0
+
   packages/react:
     specifiers:
       shared: workspace:*
