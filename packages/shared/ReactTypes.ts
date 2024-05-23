@@ -12,3 +12,8 @@ export interface ReactElementType {
 	ref: Ref;
 	__mark: string;
 }
+
+// Update更新数据结构的Action类型
+// this.setState({xx:1})
+// this.setState(({xx:1}) => ({xx:2}))
+export type Action<State> = State | ((prevState: State) => State);
