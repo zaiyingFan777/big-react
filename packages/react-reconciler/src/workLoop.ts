@@ -43,6 +43,9 @@ function markUpdateFromFiberToRoot(fiber: FiberNode) {
 // workInProgress指向我们需要遍历的第一个fiberNode
 function prepareFreshStack(root: FiberRootNode) {
 	// root.current -> hostRootFiber
+	// 首屏渲染
+	// 因为第一次hostRootFiber被初始化了，所以wip(hostRootFiber)有current
+	// 创建root.current(hostRootFiber)的wip
 	workInProgress = createWorkInProgress(root.current, {});
 }
 
@@ -64,10 +67,19 @@ function renderRoot(root: FiberRootNode) {
 			workLoop();
 			break;
 		} catch (e) {
-			console.warn('workLoop发生错误', e);
+			if (__DEV__) {
+				console.warn('workLoop发生错误', e);
+			}
 			workInProgress = null;
 		}
 	} while (true);
+
+	// 获得完成更新流程的wip树
+	const finishedWork = root.current.alternate; // fiberRootNode.alternate
+	root.finishedWork = finishedWork;
+
+	// wip fiberNode树 树中的flags
+	// commitRoot(root);
 }
 
 function workLoop() {

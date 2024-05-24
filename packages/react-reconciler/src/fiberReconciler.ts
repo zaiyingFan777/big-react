@@ -19,6 +19,7 @@ import { scheduleUpdateOnFiber } from './workLoop';
 
 // ReactDOM.createRoot(rootElement).render(<App/>)中ReactDOM.createRoot()调用的时候，内部调用此函数
 export function createContainer(container: Container) {
+	// 初始化的时候我们会有fiberRootNode以及hostRootFiber，当第一次mount的时候根据这个hostRootFiber创建wip
 	// 初始化hostRootFiber
 	const hostRootFiber = new FiberNode(HostRoot, {}, null);
 	// 初始化fiberRootNode
@@ -29,6 +30,7 @@ export function createContainer(container: Container) {
 }
 
 // render(<App/>)的时候调用此函数
+// element就是<App/>对应的ReactElement
 export function updateContainer(
 	element: ReactElementType | null,
 	root: FiberRootNode
