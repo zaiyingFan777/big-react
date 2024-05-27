@@ -30,7 +30,10 @@ export function getPackageJSON(pkgName) {
 
 // 获取所有基础的rollup基础的插件
 export function getBaseRollupPlugins({
-  alias = {__DEV__: true},
+  alias = {
+    __DEV__: true, 
+    preventAssignment: true
+  },
   typescript = {}
 } = {}) {
   // ts: 将我们packages下源码ts代码转为js代码

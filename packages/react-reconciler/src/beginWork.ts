@@ -53,6 +53,7 @@ function updateHostRoot(wip: FiberNode) {
 	// 1.计算状态最新值
 	const baseState = wip.memoizedState; // 首屏渲染不存在
 	const updateQueue = wip.updateQueue as UpdateQueue<Element>;
+	// pending => {action: reactElement}
 	const pending = updateQueue.shared.pending;
 	// 清空updateQueue
 	// 这里注意一下
@@ -117,6 +118,7 @@ function reconcileChildren(wip: FiberNode, children?: ReactElementType) {
 	if (current !== null) {
 		// update
 		// 首屏渲染 hostRootFiber走这里，因为他有current，被标记placement，执行一次dom操作(离屏dom树插入到页面上)
+		// 首屏渲染：hostRootFiber返回child 这里的child的flag会带上插入标记，归阶段回来后由于冒泡机制hostRootFiber的subtreeFlags上也是插入的标记
 		wip.child = reconcileChildFibers(wip, current?.child, children);
 	} else {
 		// mount

@@ -1,5 +1,6 @@
 import {
 	appendInitialChild,
+	Container,
 	createInstance,
 	createTextInstance
 } from 'hostConfig';
@@ -32,7 +33,8 @@ export const completeWork = (wip: FiberNode) => {
 			} else {
 				// mount
 				// 1.构建DOM
-				const instance = createInstance(wip.type, newProps);
+				// const instance = createInstance(wip.type, newProps);
+				const instance = createInstance(wip.type);
 				// 2.将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				// 3.将创建的instance赋值给wip
@@ -82,7 +84,7 @@ export const completeWork = (wip: FiberNode) => {
  * node为第二个A，因为node.silbling是null，并且node.return是wip，那么就退出循环
  * 深度优先，层级遍历（找兄弟）然后再往上归
  */
-function appendAllChildren(parent: FiberNode, wip: FiberNode) {
+function appendAllChildren(parent: Container, wip: FiberNode) {
 	// 找到孩子节点
 	let node = wip.child;
 

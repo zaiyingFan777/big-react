@@ -1,9 +1,11 @@
 import { beginWork } from './beginWork';
+import { commitMutationEffects } from './commitWork';
 import { completeWork } from './completeWork';
 import { createWorkInProgress, FiberNode, FiberRootNode } from './fiber';
+import { MutationMask, NoFlags } from './fiberFlags';
 import { HostRoot } from './workTags';
 
-// 内存中构建的dom树
+// 内存中构建的dom树(最初是hostRootFiber)
 let workInProgress: FiberNode | null = null;
 
 // ReactDOM.createRoot(rootElement).render(<App/>)中的container与renderRoot连接上
@@ -79,9 +81,12 @@ function renderRoot(root: FiberRootNode) {
 	root.finishedWork = finishedWork;
 
 	// wip fiberNode树 树中的flags
-	// commitRoot(root);
+	commitRoot(root);
 }
 
+// render阶段
+// beginWork
+// completeWork
 function workLoop() {
 	while (workInProgress !== null) {
 		performUnitOfWork(workInProgress);
@@ -118,4 +123,45 @@ function completeUnitOfWork(fiber: FiberNode) {
 		node = node.return;
 		workInProgress = node;
 	} while (node !== null);
+}
+
+// ------------------------------------------------------------分割线------------------------------------------------------------
+
+// commit阶段分为：
+// beforeMutation阶段
+// mutation阶段
+// layout阶段
+function commitRoot(root: FiberRootNode) {
+	// render完成后的wip(fiberRootNode)
+	const finishedWork = root.finishedWork;
+
+	if (finishedWork === null) {
+		return;
+	}
+
+	if (__DEV__) {
+		console.warn('commit阶段开始', finishedWork);
+	}
+
+	// 重置操作，root.finishedWork = null，root.finishedWork已经被保存在finishedWork中了
+	root.finishedWork = null;
+
+	// 判断是否存在三个子阶段需要执行的操作
+	// root flags、root subtreeFlags
+	const subtreeHasEffect =
+		(finishedWork.subtreeFlags & MutationMask) !== NoFlags;
+	const rootHasEffect = (finishedWork.flags & MutationMask) !== NoFlags;
+
+	if (subtreeHasEffect || rootHasEffect) {
+		// beforeMutation阶段
+		// mutation阶段
+		commitMutationEffects(finishedWork);
+		// fiber树切换在mutation和layout之间
+		root.current = finishedWork;
+
+		// layout阶段
+	} else {
+		// 没有更新也需要执行树切换的操作
+		root.current = finishedWork;
+	}
 }

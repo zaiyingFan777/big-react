@@ -20,7 +20,7 @@
 		"typeRoots": ["./types", "./node_modules/@types/"],
 		"baseUrl": "./packages",
 		"paths": {
-			"hostConfig": ["./react-reconciler/src/hostConfig.ts"]
+			"hostConfig": ["./react-dom/src/hostConfig.ts"] // 代码类型检查
 		}
 	}
 }

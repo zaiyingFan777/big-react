@@ -14,3 +14,8 @@ export const appendInitialChild = (...args: any) => {
 export const createTextInstance = (...args: any) => {
 	return {} as any;
 };
+
+// 将元素插到父节点
+export const appendChildToContainer = (...args: any) => {
+	return {} as any;
+};

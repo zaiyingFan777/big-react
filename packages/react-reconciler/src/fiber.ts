@@ -157,6 +157,8 @@ export const createWorkInProgress = (
 		wip.subtreeFlags = NoFlags;
 	}
 	wip.type = current.type;
+	// 这里current和wip指向同一个对象，如果wip.updateQueue.shared.pending = null，那么他俩的updateQueue的shared.pending都为Null
+	// 如果在wip.updateQueue.shared.pending = null之前，保存pending = wip.updateQueue.shared.pending; 那么pending还是指向{action: reactElement}
 	wip.updateQueue = current.updateQueue;
 	wip.child = current.child;
 	wip.memoizedProps = current.memoizedProps;
