@@ -15,8 +15,14 @@
 import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { processUpdateQueue, UpdateQueue } from './updateQueue';
-import { HostComponent, HostRoot, HostText } from './workTags';
+import {
+	FunctionComponent,
+	HostComponent,
+	HostRoot,
+	HostText
+} from './workTags';
 import { mountChildFibers, reconcileChildFibers } from './childFibers';
+import { renderWithHooks } from './fiberHooks';
 
 // 递归中的递阶段
 export const beginWork = (wip: FiberNode) => {
@@ -35,6 +41,8 @@ export const beginWork = (wip: FiberNode) => {
 			// HostText没有beginWork工作流程（因为他没有子节点）
 			// <p>唱跳Rap</p>
 			return null; // 递阶段完事，开始归阶段
+		case FunctionComponent:
+			return updateFunctionComponent(wip); // 递阶段完事，开始归阶段
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型', wip.tag);
@@ -103,6 +111,62 @@ function updateHostComponent(wip: FiberNode) {
 	// }
 	const nextProps = wip.pendingProps;
 	const nextChildren = nextProps.children;
+	reconcileChildren(wip, nextChildren);
+	return wip.child;
+}
+
+// FunctionComponent的beginwork流程
+function updateFunctionComponent(wip: FiberNode) {
+	// 流程：普通jsx像下面的 babel帮我们生成jsx(div,{jsx(span)})然后再执行我们的jsx方法得到ReactElement，然后开始ReactDOM.createRoot(root).render(jsx(ReactElement));方法的流程
+	// const jsx = (
+	// 	<div><span>big-react</span></div>
+	// );
+	// 如果是像下面的函数组件，先编译为下面的函数，执行ReactDOM.createRoot(root).render(<App/>这里执行jsx(App,xxx),生成ReactElement);方法的流程，当遇到函数组件，
+	// 执行renderWithHooks，这个函数里面会执行App方法，执行完App方法里面是babel帮我们生成的jsx(div,xxx)，需要再执行我们实现的jsx拿到ReactElement，再遇到函数组件
+	// 再执行类似的流程
+	// App babel编译后的结果
+	// function App() {
+	// 	return /*#__PURE__*/(0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxDEV)("div", {
+	// 		children: /*#__PURE__*/(0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxDEV)(Child, {}, void 0, false, {
+	// 			fileName: _jsxFileName,
+	// 			lineNumber: 56,
+	// 			columnNumber: 7
+	// 		}, this)
+	// 	}, void 0, false, {
+	// 		fileName: _jsxFileName,
+	// 		lineNumber: 55,
+	// 		columnNumber: 5
+	// 	}, this);
+	// }
+	// 为什么会造成jsx和APP的差异，因为babel编译完的函数并没有被执行，所以里面的jsx()方法也没有执行。而jsx直接编译为jsx(xxx)就直接执行我们的jsx方法了得到了ReactElement
+	// <App/>编译后的结果就是 jsx(App, ...) 进入 ReactDOM.createRoot(root).render(jsx(App, ...)(<App/>)) 因为有<App/>这时候还是babel编译后的结果 需要执行我们的jsx方法得到ReactElement
+	// 下面我们可以看到render()里面接受的参数是jsx()需要执行我们的jsx()方法得到ReactElement，但是上面的render(jsx)，遇到jsx直接帮我们执行了jsx()得到了ReatElement，所以这里的jsx就是编译好的ReactElement
+	// react_dom__WEBPACK_IMPORTED_MODULE_1___default().createRoot(root).render( /*#__PURE__*/(0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxDEV)(App, {}, void 0, false, {
+	// 	fileName: _jsxFileName,
+	// 	lineNumber: 69,
+	// 	columnNumber: 34
+	// }, undefined));
+
+	// App的child是div，为了能够得到div我们需要调用App()函数
+	// function App(){
+	// 	return (
+	// 		<div>
+	// 			<span>big-react</span>
+	// 		</div>
+	// 	)
+	// }
+	// 上述<App/> jsx 编译出来React.createElement()createElement方法得到的ReactElement为
+	// {
+	// 	$$typeof: Symbol(react.element),
+	// 	key: null,
+	// 	props: {},
+	// 	ref: null,
+	// 	type: f App()
+	// }
+	// 当我们拿到App函数然后在renderWithHooks里面执行，因为仍然是jsx编译好的React.creatElement('div'...)，所以会执行我们在react包里写好的React.creatElement方法
+	// 并把这些参数传递进去，得到children(ReactElement),,如果里面reactElement还有子组件到时候仍然需要先执行函数再执行jsx()得到ReactElement
+	// fiber.type 组件函数本身
+	const nextChildren = renderWithHooks(wip);
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }
