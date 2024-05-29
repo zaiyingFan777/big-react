@@ -59,6 +59,8 @@ export class FiberNode {
 	index: number;
 
 	memoizedProps: Props | null;
+	// 函数组件：memoizedState指向的hooks链表（useState->useEffect->useState）因此hook的调用顺序不能变化!!!
+	// HostRootFiber: mount时，memoizedState指向的是整个节点的ReactElement
 	memoizedState: any;
 	// 如果当前的fiberNode是current那么他的alternate指向workInProgress fiberNode
 	// 如果当前的fiberNode是workInProgress那么他的alternate指向current fiberNode
