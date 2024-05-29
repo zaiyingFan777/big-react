@@ -3,7 +3,7 @@ import currentDispatcher, {
 	Dispatcher,
 	resolveDispatcher
 } from './src/currentDispatcher';
-import { jsxDEV } from './src/jsx';
+import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
 export const useState: Dispatcher['useState'] = (initialState) => {
 	const dispatcher = resolveDispatcher();
 	return dispatcher.useState(initialState); // 得到[num, setNum]
@@ -14,7 +14,8 @@ export const __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = {
 	currentDispatcher
 };
 
-export default {
-	version: '0.0.0',
-	createElement: jsxDEV
-};
+export const version = '0.0.0';
+// 根据环境使用jsx还是jsxDEV  生产环境用jsx，开发环境用jsxDEV
+// export const createElement = jsxDEV;
+export const createElement = jsx;
+export const isValidElement = isValidElementFn;

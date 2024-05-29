@@ -1,6 +1,6 @@
 {
 	"compileOnSave": true,
-	"include": ["./packages/**/*"],
+	"include": ["./packages/**/*"], // 以packages作为入口 demos就不打包进去了
 	"compilerOptions": {
 		"target": "ESNext",
 		"useDefineForClassFields": true,

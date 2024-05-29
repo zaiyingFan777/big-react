@@ -20,12 +20,12 @@ export default [
     output: [
       {
         file: `${pkgDistPath}/index.js`,
-        name: 'index.js',
+        name: 'ReactDOM', // umd的包esm模式下没问题，但是如果在浏览器环境下，通过windows.[index.js]是不对的 应该是window.ReactDOM
         format: 'umd'
       },
       {
         file: `${pkgDistPath}/client.js`,
-        name: 'client.js',  // react18以后 'ReactDOM/client'
+        name: 'client',  // react18以后 'ReactDOM/client'
         format: 'umd'
       }
     ],
@@ -55,5 +55,18 @@ export default [
         })
       }),
     ]
+  },
+  // react-test-utils
+  {
+    input: `${pkgPath}/test-utils.ts`,
+    output: [
+      {
+        file: `${pkgDistPath}/test-utils.js`,
+        name: 'testUtils',
+        format: 'umd'
+      }
+    ],
+    external: ['react-dom', 'react'], // 外部依赖 不希望这些打包到test-utils里
+    plugins: getBaseRollupPlugins()
   }
 ]
