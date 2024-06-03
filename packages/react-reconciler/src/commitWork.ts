@@ -1,9 +1,25 @@
 // commit阶段的方法
 
-import { appendChildToContainer, Container } from 'hostConfig';
+import {
+	appendChildToContainer,
+	commitUpdate,
+	Container,
+	removeChild
+} from 'hostConfig';
 import { FiberNode, FiberRootNode } from './fiber';
-import { MutationMask, NoFlags, Placement } from './fiberFlags';
-import { HostComponent, HostRoot, HostText } from './workTags';
+import {
+	ChildDeletion,
+	MutationMask,
+	NoFlags,
+	Placement,
+	Update
+} from './fiberFlags';
+import {
+	FunctionComponent,
+	HostComponent,
+	HostRoot,
+	HostText
+} from './workTags';
 
 let nextEffect: FiberNode | null = null;
 
@@ -56,8 +72,135 @@ const commitMutationEffectsOnFiber = (finishedWork: FiberNode) => {
 	}
 
 	// flag Update
+	if ((flags & Update) !== NoFlags) {
+		commitUpdate(finishedWork);
+		// 移除标记
+		finishedWork.flags &= ~Update;
+	}
 	// flag ChildDeletion
+	if ((flags & ChildDeletion) !== NoFlags) {
+		const deletions = finishedWork.deletions;
+		// 删除finishedWork下面的子节点
+		if (deletions !== null) {
+			deletions.forEach((childToDelete) => {
+				commitDeletion(childToDelete);
+			});
+		}
+		// 移除标记
+		finishedWork.flags &= ~ChildDeletion;
+	}
 };
+
+// 删除操作
+// 如果删除div 他的子节点也需要不同的处理，比如FunctionComponent(useEffect unmount执行、解绑ref)、HostComponent(解绑ref)、对于div我们需要移除div的DOM,
+// <div>
+// 	<App />
+// 	123
+// 	<p>
+// 		<Child />
+// 	</p>
+// </div>;
+// 但是如果div变为了App函数组件，我们需要找到函数组件实际的根hostComponent的dom并将她移除
+// <App>
+// 	123
+// 	<p>
+// 		<Child />
+// 	</p>
+// </App>
+// 递归子树的操作
+// 对于FC，需要处理useEffect unmout执行、解绑ref
+// 对于HostComponent，需要解绑ref
+// 对于子树的根HostComponent，需要移除DOM
+function commitDeletion(childToDelete: FiberNode) {
+	// 子树的根HostComponent类型的节点
+	let rootHostNode: FiberNode | null = null;
+
+	// 递归子树
+	// demo childToDelete为div，也就是删除div以及div的子节点
+	// <div>
+	// 	<App/>
+	// 	<p2/>
+	// </div>
+	// function App() {
+	// 	return <p1>123</p1>
+	// }
+	// commitNestedComponent回调函数的执行顺序为 div App p1 123 p2
+	commitNestedComponent(childToDelete, (unmountFiber) => {
+		switch (unmountFiber.tag) {
+			// classComponent会调用componentWillUnmount生命周期钩子
+			case HostComponent:
+				// 这里会找到childToDelete下面第一个host类型的子节点并删除
+				if (rootHostNode === null) {
+					rootHostNode = unmountFiber;
+				}
+				// TODO 解绑ref
+				return;
+			case HostText:
+				// 这里会找到childToDelete下面第一个host类型的子节点并删除
+				if (rootHostNode === null) {
+					rootHostNode = unmountFiber;
+				}
+				return;
+			case FunctionComponent:
+				// TODO useEffect unmount的处理、解绑ref
+				return;
+			default:
+				if (__DEV__) {
+					console.warn('未处理的unmount类型', unmountFiber);
+				}
+		}
+	});
+
+	// 移除rootHostNode的DOM
+	if (rootHostNode !== null) {
+		// hostParent是我们要删掉的子树中的根fiber节点的host类型的parent
+		const hostParent = getHostParent(childToDelete);
+		if (hostParent !== null) {
+			// 我们在hostParent下面删除这个子树的根host类型的节点
+			removeChild((rootHostNode as FiberNode).stateNode, hostParent);
+		}
+	}
+	// 重置操作
+	childToDelete.return = null;
+	childToDelete.child = null;
+}
+
+// 移除rootHostComponent的DOM
+// 需要递归子树的根节点：root
+// onCommitUnmount递归到的当前fiber的回调函数
+function commitNestedComponent(
+	root: FiberNode,
+	onCommitUnmount: (fiber: FiberNode) => void
+) {
+	// 深度优先遍历的过程
+	let node = root;
+	while (true) {
+		onCommitUnmount(node);
+		// 向下遍历
+		if (node.child !== null) {
+			// 向下遍历的过程
+			node.child.return = node;
+			node = node.child;
+			continue;
+		}
+		if (node === root) {
+			// 终止条件
+			return;
+		}
+		// 处理node的兄弟节点
+		while (node.sibling === null) {
+			if (node.return === null || node.return === root) {
+				// 终止条件
+				return;
+			}
+			// 向上遍历（归）的过程
+			node = node.return;
+		}
+		// 如果node的兄弟节点不为null，处理兄弟节点
+		node.sibling.return = node.return;
+		node = node.sibling;
+	}
+}
 
 // 插入操作
 const commitPlacement = (finishedWork: FiberNode) => {

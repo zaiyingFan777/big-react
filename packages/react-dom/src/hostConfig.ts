@@ -1,5 +1,9 @@
+import { FiberNode } from 'react-reconciler/src/fiber';
+import { HostText } from 'react-reconciler/src/workTags';
+
 export type Container = Element;
 export type Instance = Element;
+export type TextInstance = Text;
 
 // 创建要被插入DOM
 // export const createInstance = (type: string, props: any): Instance => {
@@ -29,3 +33,32 @@ export const createTextInstance = (content: string) => {
 
 // 将元素插到父节点
 export const appendChildToContainer = appendInitialChild;
+
+// commit阶段的更新操作
+export function commitUpdate(fiber: FiberNode) {
+	switch (fiber.tag) {
+		case HostText:
+			const text = fiber.memoizedProps.content;
+			return commitTextUpdate(fiber.stateNode, text);
+
+		default:
+			if (__DEV__) {
+				console.warn('未实现的Update类型', fiber);
+			}
+			break;
+	}
+}
+
+export function commitTextUpdate(textInstance: TextInstance, content: string) {
+	textInstance.textContent = content;
+}
+
+// commit中的移除节点
+export function removeChild(
+	child: Instance | TextInstance,
+	container: Container
+) {
+	// removeChild 是一个 DOM（文档对象模型）操作，它用于从 DOM 树中移除一个子节点。这个操作定义在 Node 接口中，
+	// 因此不仅限于 Element 类型，任何继承自 Node 的对象都可以调用 removeChild 方法。
+	container.removeChild(child);
+}

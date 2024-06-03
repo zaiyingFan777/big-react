@@ -11,7 +11,12 @@ import {
 	HostRoot,
 	HostText
 } from './workTags';
-import { NoFlags } from './fiberFlags';
+import { NoFlags, Update } from './fiberFlags';
+
+// completework标记更新
+function markUpdate(fiber: FiberNode) {
+	fiber.flags |= Update;
+}
 
 /**
  * completeWork性能优化策略
@@ -35,6 +40,7 @@ export const completeWork = (wip: FiberNode) => {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
 				// update
+				// classname a => b 标记update
 			} else {
 				// mount
 				// 1.构建DOM
@@ -50,6 +56,20 @@ export const completeWork = (wip: FiberNode) => {
 		case HostText:
 			if (current !== null && wip.stateNode) {
 				// update
+				// 主要处理标记Update的情况
+				// 知识回忆：beginwork后会把fiber的pendingProps赋值给fiber的memoizedProps
+				// next: 子fiber或者null
+				// const next = beginWork(fiber);
+				// // 工作完成后赋值memoizedProps
+				// fiber.memoizedProps = fiber.pendingProps;
+
+				// 因此我们在memoizedProps上拿到oldText
+				const oldText = current.memoizedProps.content;
+				const newText = newProps.content;
+				if (oldText !== newText) {
+					// 标记Update 标记都是打在wip上的不搞到current，因为后续commit操作的时候是wip，操作完dom后再把wip赋值给current
+					markUpdate(wip);
+				}
 			} else {
 				// mount
 				// 1.构建DOM

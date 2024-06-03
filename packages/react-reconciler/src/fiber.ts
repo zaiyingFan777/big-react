@@ -71,6 +71,7 @@ export class FiberNode {
 	subtreeFlags: Flags;
 	// 更新，比如mount的时候(首屏渲染)，hostRootFiber的updateQueue放的就是要渲染的所有组件
 	updateQueue: unknown;
+	deletions: FiberNode[] | null;
 
 	/**
 	 * pendingProps: 当前fiberNode有哪些props需要改变
@@ -107,6 +108,7 @@ export class FiberNode {
 		// 副作用
 		this.flags = NoFlags;
 		this.subtreeFlags = NoFlags;
+		this.deletions = null;
 	}
 }
 
@@ -157,6 +159,7 @@ export const createWorkInProgress = (
 		// 清空上次流程的副作用
 		wip.flags = NoFlags;
 		wip.subtreeFlags = NoFlags;
+		wip.deletions = null;
 	}
 	wip.type = current.type;
 	// 这里current和wip指向同一个对象，如果wip.updateQueue.shared.pending = null，那么他俩的updateQueue的shared.pending都为Null
