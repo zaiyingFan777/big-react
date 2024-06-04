@@ -1,18 +1,21 @@
 import { FiberNode } from 'react-reconciler/src/fiber';
-import { HostText } from 'react-reconciler/src/workTags';
+import { HostComponent, HostText } from 'react-reconciler/src/workTags';
+import { Props } from 'shared/ReactTypes';
+import { DOMElement, updateFiberProps } from './SyntheticEvent';
 
 export type Container = Element;
 export type Instance = Element;
 export type TextInstance = Text;
 
 // 创建要被插入DOM
-// export const createInstance = (type: string, props: any): Instance => {
-export const createInstance = (type: string): Instance => {
+export const createInstance = (type: string, props: Props): Instance => {
 	// todo 处理props
 
 	// document.createElement('div')
-	const element = document.createElement(type);
-	return element;
+	const element = document.createElement(type) as unknown;
+	// 创建dom时，将事件保存在dom上的elementPropsKey属性上
+	updateFiberProps(element as DOMElement, props);
+	return element as DOMElement;
 };
 
 // 插入孩子节点
@@ -38,7 +41,7 @@ export const appendChildToContainer = appendInitialChild;
 export function commitUpdate(fiber: FiberNode) {
 	switch (fiber.tag) {
 		case HostText:
-			const text = fiber.memoizedProps.content;
+			const text = fiber.memoizedProps?.content;
 			return commitTextUpdate(fiber.stateNode, text);
 
 		default:

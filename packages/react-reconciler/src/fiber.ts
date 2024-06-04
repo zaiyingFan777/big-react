@@ -70,6 +70,8 @@ export class FiberNode {
 	// 子树中是否有更新
 	subtreeFlags: Flags;
 	// 更新，比如mount的时候(首屏渲染)，hostRootFiber的updateQueue放的就是要渲染的所有组件
+	// HostComponent组件更新属性变化 将变化的属性存放在updateQueue中 : [n, n+1] 第n项为变化的属性，第n+1项为变化的属性值，比如[className, 'aaa', title, 'hahah']
+	// n为key n+1为value
 	updateQueue: unknown;
 	deletions: FiberNode[] | null;
 

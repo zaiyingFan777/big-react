@@ -12,6 +12,7 @@ import {
 	HostText
 } from './workTags';
 import { NoFlags, Update } from './fiberFlags';
+import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 // completework标记更新
 function markUpdate(fiber: FiberNode) {
@@ -41,11 +42,16 @@ export const completeWork = (wip: FiberNode) => {
 			if (current !== null && wip.stateNode) {
 				// update
 				// classname a => b 标记update
+				// 将合成事件保存在DOM中，2.更新属性时
+				// 1.props是否变化 {onClick: xx} => {onClick: xxx}
+				// 2.变了 Update flag
+				// 我们这里没有判断哪样属性变了，直接赋值
+				updateFiberProps(wip.stateNode, newProps);
 			} else {
 				// mount
 				// 1.构建DOM
-				// const instance = createInstance(wip.type, newProps);
-				const instance = createInstance(wip.type);
+				// 将合成事件保存在DOM中，1.创建DOM时
+				const instance = createInstance(wip.type, newProps);
 				// 2.将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				// 3.将创建的instance赋值给wip
@@ -64,7 +70,7 @@ export const completeWork = (wip: FiberNode) => {
 				// fiber.memoizedProps = fiber.pendingProps;
 
 				// 因此我们在memoizedProps上拿到oldText
-				const oldText = current.memoizedProps.content;
+				const oldText = current.memoizedProps?.content;
 				const newText = newProps.content;
 				if (oldText !== newText) {
 					// 标记Update 标记都是打在wip上的不搞到current，因为后续commit操作的时候是wip，操作完dom后再把wip赋值给current
