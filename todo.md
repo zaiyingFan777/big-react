@@ -81,3 +81,11 @@ function Child() {
 
 3. 进入 completework 的阶段会生成 text 文本节点、span 节点，并将 text 插入到 span 中，构建好离屏 span dom，wip app 的 flag 为 4 删除，deletions: [div fiber]，wip app.child 为 wip Child，并且 wip Child 的 flag 为 1，需要将 child 下面的节点插入到 root 中，因为 app 里面没有 dom 就只有 Child，上面 completework 的流程会有冒泡的过程，因此 wip Child 的 flag 会冒泡给 wip app 的 subtreeflag 上，这样 cur app 的 flag 为 4（删除），subtreeflag 为 1（新增）。wip CHild 的 flag(4)与 subtreeflag(1)会冒泡给 wip hostrootfiber。wip hostrootfiber.subtreeFlags = 5;
 4. 进入到 commit 阶段，finishedWork（wip hostrootfiber）的 subtreeflag & MutationMask !== NoFlags，会进入到 mutation 阶段，commitMutationEffects 会找到需要被插入的 wip Child fibernode，并将 wip Child.child.stateNode 插入到#root 中，完事后，移除 wip Child.flag(1)变为 0。接着向上归找到 wip app，执行 wip app 的 delete 操作，遍历 deletions 的 cur fibernode，执行 commitDeletion，执行 commitDeletion 会递归删除子节点（dfs）[找到要被删除的 cur fibernode 下的第一个 host 类型的 fiber，并移除]完事后移除 wip fibernode 的 flag(4)变为 0。mutation 阶段完事后，将 wip 切换为 current
+
+## 4.关于 hook 执行顺序
+
+我们会在 react 包中声明内部数据共享集（为 Null），在 shared 包里也会引用 react 的内部数据共享集，在 react-reconciler 中在 renderwithhooks 中定义不同时期的内部数据共享集（mount、update 等），然后在不同时期对数据共享集赋值。其中需要注意，react-reconciler 引用了 react 的内部数据共享集这就说明 react 被打包到 react-dom 中，这时候 react 的数据共享集和 react-dom 的数据共享集不是同一个对象，为了是同一个对象我们在打包 react-dom 的时候不把 react 打包进去(通过配置)。(如果打包在一起，意味着打包后的 ReactDOM 中会包含 React 的代码，那么 ReactDOM 中会包含一个「内部数据共享层」，React 中也会包含一个「内部数据共享层」，这两者不是同一个「内部数据共享层」。) 函数组件执行流程，如果是 mount 时期，执行 renderwithhooks 函数，根据 mount 还是 update 对内部数据共享集赋值，然后再去执行 Component(函数组件的函数)，这时候函数组件的 useState 就是我们刚才赋值的内部数据共享集
+
+## 4.关于合成事件的执行顺序
+
+我们在 ReactDOM.createRoot().render()中 render 函数中执行 Init 函数，对 container 做事件代理，这样我们点击 container 里面的 dom 元素时，e.target 就是点击的 dom 元素然后 dispatchEvent 就 1.从 e.target 被点击的元素向上收集沿途的事件一直到 container，2.构造合成事件 3.遍历 capture 捕获 4.遍历冒泡 click
