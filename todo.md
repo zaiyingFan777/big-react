@@ -89,3 +89,18 @@ function Child() {
 ## 4.关于合成事件的执行顺序
 
 我们在 ReactDOM.createRoot().render()中 render 函数中执行 Init 函数，对 container 做事件代理，这样我们点击 container 里面的 dom 元素时，e.target 就是点击的 dom 元素然后 dispatchEvent 就 1.从 e.target 被点击的元素向上收集沿途的事件一直到 container，2.构造合成事件 3.遍历 capture 捕获 4.遍历冒泡 click
+
+## 5.insertBefore
+
+insertBefore 是一个 DOM 方法，用于将一个新节点插入到父节点的子节点列表中，具体位置是在指定的参考节点之前。以下是 insertBefore 方法的一般用法：
+
+```
+语法
+parentElement.insertBefore(newNode, referenceNode);
+parentElement 是包含要插入节点的父元素。
+newNode 是要插入的节点。
+referenceNode 是父元素中已经存在的一个子节点，newNode 将被插入到这个节点之前。
+参数
+第一个参数 newNode 可以是元素节点（Element）、文本节点（Text）或注释节点（Comment）。
+第二个参数 referenceNode 是父元素中的一个子节点，newNode 将被插入到这个节点的前面。如果 referenceNode 是 null，则 newNode 将被添加到父元素的子节点列表的末尾。
+```

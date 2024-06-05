@@ -65,3 +65,12 @@ export function removeChild(
 	// 因此不仅限于 Element 类型，任何继承自 Node 的对象都可以调用 removeChild 方法。
 	container.removeChild(child);
 }
+
+// insertBefore
+export function insertChildToContainer(
+	child: Instance,
+	container: Container,
+	before: Instance
+) {
+	container.insertBefore(child, before);
+}
