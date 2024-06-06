@@ -4,6 +4,8 @@ import currentDispatcher, {
 	resolveDispatcher
 } from './src/currentDispatcher';
 import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
+// react 导出Fragment
+export { REACT_FRAGMENT_TYPE as Fragment } from 'shared/ReactSymbols';
 export const useState: Dispatcher['useState'] = (initialState) => {
 	const dispatcher = resolveDispatcher();
 	return dispatcher.useState(initialState); // 得到[num, setNum]

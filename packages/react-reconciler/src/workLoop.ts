@@ -164,4 +164,6 @@ function commitRoot(root: FiberRootNode) {
 		// 没有更新也需要执行树切换的操作
 		root.current = finishedWork;
 	}
+
+	console.log(root.current);
 }

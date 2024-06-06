@@ -15,7 +15,7 @@
 // 2.运行时 需要我们自己实现jsx、React.createElement()等犯法将jsx()、React.createElement()转换成ReactElement
 // jsx方法或React.createElement方法的实现（包括dev、prod两个环境）
 
-import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols';
+import { REACT_ELEMENT_TYPE, REACT_FRAGMENT_TYPE } from 'shared/ReactSymbols';
 import {
 	ElementType,
 	Key,
@@ -98,6 +98,11 @@ export const jsx = (type: ElementType, config: any, ...maybeChildren: any) => {
 	}
 	return ReactElement(type, key, ref, props);
 };
+
+// 导出Fragment类型  因为jsx是我们导出的，Fragment也需要我们导出
+// jsx(Fragment, {...}); BABEL帮我们编译为jsx(Fragment, {...});，然后执行我们的jsx方法，这个Fragment需要我们导出，进入jsx方法，
+// 然后创建一个ReactElement，然后返回ReactElement，类型为Fragment
+export const Fragment = REACT_FRAGMENT_TYPE;
 
 export const jsxDEV = (type: ElementType, config: any) => {
 	let key: Key = null;

@@ -104,3 +104,200 @@ referenceNode 是父元素中已经存在的一个子节点，newNode 将被插�
 第一个参数 newNode 可以是元素节点（Element）、文本节点（Text）或注释节点（Comment）。
 第二个参数 referenceNode 是父元素中的一个子节点，newNode 将被插入到这个节点的前面。如果 referenceNode 是 null，则 newNode 将被添加到父元素的子节点列表的末尾。
 ```
+
+## 6.移动操作
+
+关于移动操作，在 beginwork 中，我们通过 diff 会给需要插入或者移动的节点打上 Placement 的标签，然后在 commitwork 执行 Placement 标记的操作中，我们会找到被标记节点的 hostParent、sibling，如果找不到 sibling 就是 appendChild 操作，如果找到了要被插入节点的 sibling(稳定的)，我们就会执行 insertBefore 操作。
+
+```
+const commitPlacement = (finishedWork: FiberNode) => {
+	// 我们需要知道parent dom
+	// 我们需要找到finishedWork对应的dom节点，才能插入到parent节点
+	if (__DEV__) {
+		console.warn('执行Placement操作', finishedWork);
+	}
+	// parent dom
+	const hostParent = getHostParent(finishedWork);
+
+	// host sibling
+	// parentNode.insertBefore需要找到【目标兄弟host节点】
+	const sibling = getHostSibling(finishedWork);
+
+	// 找到finishedWork对应的dom，并append到parent中
+	if (hostParent !== null) {
+		insertOrAppendPlacementNodeIntoContainer(finishedWork, hostParent, sibling);
+	}
+};
+```
+
+## 7.[]形式 jsx 解析
+
+```
+// 非数组
+function App2(){
+  return <div>
+    <div key="1">1</div>
+    <div key="1">2</div>
+  </div>
+}
+// 数组
+function App(){
+  const list = [<div key="1">1</div>, <div key="1">2</div>];
+
+  return <div>{list}</div>
+}
+
+<App/>
+=>
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+function App2() {
+  return /*#__PURE__*/_jsxs("div", {
+    children: [/*#__PURE__*/_jsx("div", {
+      children: "1"
+    }, "1"), /*#__PURE__*/_jsx("div", {
+      children: "2"
+    }, "1")]
+  });
+}
+function App() {
+  const list = [/*#__PURE__*/_jsx("div", {
+    children: "1"
+  }, "1"), /*#__PURE__*/_jsx("div", {
+    children: "2"
+  }, "1")];
+  return /*#__PURE__*/_jsx("div", {
+    children: list
+  });
+}
+/*#__PURE__*/_jsx(App, {});
+```
+
+## 8.Fragment 元素的 jsx 编译出来是下面结果。
+
+1. Fragment 下有多个节点
+
+```
+<>
+  <div>1</div>
+  <div>2</div>
+</>
+
+// 编译出来的结果
+/*#__PURE__*/_jsxs(_Fragment, {
+  children: [/*#__PURE__*/_jsx("div", {
+    children: "1"
+  }), /*#__PURE__*/_jsx("div", {
+    children: "2"
+  })]
+});
+```
+
+2. Fragment 下只有一个节点
+
+```
+<>
+  <span>111</span>
+</>
+
+// 编译出来的结果
+/*#__PURE__*/_jsx(_Fragment, {
+  children: /*#__PURE__*/_jsx("span", {
+    children: "111"
+  })
+});
+```
+
+3. Fragment 嵌套
+
+```
+<>
+  <>
+    <span>111</span>
+  </>
+</>
+
+// 编译出来的结果
+/*#__PURE__*/_jsx(_Fragment, {
+  children: /*#__PURE__*/_jsx(_Fragment, {
+    children: /*#__PURE__*/_jsx("span", {
+      children: "111"
+    })
+  })
+});
+```
+
+4. 多节点 diff 中有子节点是 Fragment 的情况
+
+```
+<ul>
+  <>
+    <li>1</li>
+    <li>2</li>
+  </>
+  <li>3</li>
+  <li>4</li>
+</ul>
+
+// 对应DOM
+<ul>
+  <li>1</li>
+  <li>2</li>
+  <li>3</li>
+  <li>4</li>
+</ul>
+
+// 编译出来的结果
+jsxs('ul', {
+  children: [
+    jsxs(Fragment, {
+      children: [
+        jsx('li', {
+          children: '1'
+        }),
+        jsx('li', {
+          children: '2'
+        })
+      ]
+    }),
+    jsx('li', {
+      children: '3'
+    }),
+    jsx('li', {
+      children: '4'
+    })
+  ]
+});
+```
+
+5. 数组形式的 Fragment(diff 的时候把数组当作 fragment 来处理)
+
+```
+// arr = [<li>c</li>, <li>d</li>]
+
+<ul>
+  <li>a</li>
+  <li>b</li>
+  {arr}
+</ul>
+
+// 对应DOM
+<ul>
+  <li>a</li>
+  <li>b</li>
+  <li>c</li>
+  <li>d</li>
+</ul>
+
+// 编译后的结果
+jsxs('ul', {
+  children: [
+    jsx('li', {
+      children: 'a'
+    }),
+    jsx('li', {
+      children: 'b'
+    }),
+    arr
+  ]
+});
+```

@@ -93,6 +93,32 @@ const commitMutationEffectsOnFiber = (finishedWork: FiberNode) => {
 	}
 };
 
+// 记录要被删除的子节点的根host节点
+function recordHostChildrenToDelete(
+	childrenToDelete: FiberNode[],
+	unmountFiber: FiberNode
+) {
+	// 1.找到第一个root host节点
+	// 最后一个节点
+	let lastOne = childrenToDelete[childrenToDelete.length - 1];
+
+	if (!lastOne) {
+		// 如果还没有被记录，我们将umountFiber放到childrenToDelete数组中
+		childrenToDelete.push(unmountFiber);
+	} else {
+		// 已经被记录过了，我们需要判断是不是lastOne的兄弟节点
+		let node = lastOne.sibling;
+		while (node !== null) {
+			// 2.每找到一个host节点，判断下这个节点是不是第一步找到的哪个节点的兄弟节点
+			if (unmountFiber === node) {
+				// 是lastOne的兄弟节点
+				childrenToDelete.push(unmountFiber);
+			}
+			node = node.sibling;
+		}
+	}
+}
+
 // 删除操作
 // 如果删除div 他的子节点也需要不同的处理，比如FunctionComponent(useEffect unmount执行、解绑ref)、HostComponent(解绑ref)、对于div我们需要移除div的DOM,
 // <div>
@@ -113,9 +139,26 @@ const commitMutationEffectsOnFiber = (finishedWork: FiberNode) => {
 // 对于FC，需要处理useEffect unmout执行、解绑ref
 // 对于HostComponent，需要解绑ref
 // 对于子树的根HostComponent，需要移除DOM
+
+/**
+ * 后续备注：
+ * childdeletion删除dom的逻辑：
+ * 1.找到子树的根Host节点
+ * 2.找到子树对应的父级Host节点
+ * 3.从父级Host节点中删除子树根Host节点
+ * <div><p>xxx</p></div> 假设我们要删除p，xxx可能是嵌套很深的级,找到p，只要删除p，p的子孙也会被删除，因此找到了P div，在div中删除p
+ * 考虑删除Fragment后，子树的根Host节点可能存在多个：
+ * 如果我们删除fragment,他的父host节点有一个(div)，但是他的子有多个host节点(p)，多个p都需要被移除。因此需要找到fragment下的所有根host节点
+ * <div>
+ *  <>
+ *   <p>xxx</p>
+ *   <p>yyy</p>
+ *  </>
+ * </div>
+ */
 function commitDeletion(childToDelete: FiberNode) {
 	// 子树的根HostComponent类型的节点
-	let rootHostNode: FiberNode | null = null;
+	const rootChildrenToDelete: FiberNode[] = [];
 
 	// 递归子树
 	// demo childToDelete为div，也就是删除div以及div的子节点
@@ -132,16 +175,12 @@ function commitDeletion(childToDelete: FiberNode) {
 			// classComponent会调用componentWillUnmount生命周期钩子
 			case HostComponent:
 				// 这里会找到childToDelete下面第一个host类型的子节点并删除
-				if (rootHostNode === null) {
-					rootHostNode = unmountFiber;
-				}
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				// TODO 解绑ref
 				return;
 			case HostText:
 				// 这里会找到childToDelete下面第一个host类型的子节点并删除
-				if (rootHostNode === null) {
-					rootHostNode = unmountFiber;
-				}
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				return;
 			case FunctionComponent:
 				// TODO useEffect unmount的处理、解绑ref
@@ -154,12 +193,14 @@ function commitDeletion(childToDelete: FiberNode) {
 	});
 
 	// 移除rootHostNode的DOM
-	if (rootHostNode !== null) {
+	if (rootChildrenToDelete.length) {
 		// hostParent是我们要删掉的子树中的根fiber节点的host类型的parent
 		const hostParent = getHostParent(childToDelete);
 		if (hostParent !== null) {
-			// 我们在hostParent下面删除这个子树的根host类型的节点
-			removeChild((rootHostNode as FiberNode).stateNode, hostParent);
+			rootChildrenToDelete.forEach((node) => {
+				// 我们在hostParent下面删除这个子树的根host类型的节点
+				removeChild(node.stateNode, hostParent);
+			});
 		}
 	}
 	// 重置操作
@@ -220,6 +261,7 @@ const commitPlacement = (finishedWork: FiberNode) => {
 
 	// 找到finishedWork对应的dom，并append到parent中
 	if (hostParent !== null) {
+		// 如果sibling为null调用appendChild插入到最后，如果不为null则插入到sibling之前
 		insertOrAppendPlacementNodeIntoContainer(finishedWork, hostParent, sibling);
 	}
 };
@@ -338,12 +380,12 @@ function insertOrAppendPlacementNodeIntoContainer(
 	// 当前节点不是host类型可能是函数组件，我们需要向下遍历找到真正的Host节点
 	const child = finishedWork.child;
 	if (child !== null) {
-		insertOrAppendPlacementNodeIntoContainer(child, hostParent);
+		insertOrAppendPlacementNodeIntoContainer(child, hostParent, before);
 		// 兄弟节点也要插入到父结点上
 		let sibling = child.sibling;
 
 		while (sibling !== null) {
-			insertOrAppendPlacementNodeIntoContainer(sibling, hostParent);
+			insertOrAppendPlacementNodeIntoContainer(sibling, hostParent, before);
 			sibling = sibling.sibling;
 		}
 	}

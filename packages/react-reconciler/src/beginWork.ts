@@ -16,6 +16,7 @@ import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { processUpdateQueue, UpdateQueue } from './updateQueue';
 import {
+	Fragment,
 	FunctionComponent,
 	HostComponent,
 	HostRoot,
@@ -43,6 +44,8 @@ export const beginWork = (wip: FiberNode) => {
 			return null; // 递阶段完事，开始归阶段
 		case FunctionComponent:
 			return updateFunctionComponent(wip); // 递阶段完事，开始归阶段
+		case Fragment:
+			return updateFragment(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型', wip.tag);
@@ -167,6 +170,14 @@ function updateFunctionComponent(wip: FiberNode) {
 	// 并把这些参数传递进去，得到children(ReactElement),,如果里面reactElement还有子组件到时候仍然需要先执行函数再执行jsx()得到ReactElement
 	// fiber.type 组件函数本身
 	const nextChildren = renderWithHooks(wip);
+	reconcileChildren(wip, nextChildren);
+	return wip.child;
+}
+
+// Fragment
+function updateFragment(wip: FiberNode) {
+	const nextChildren = wip.pendingProps;
+	// fragment.pendingProps: {$$typeof: Symbol(react.element), key: null, props: {children: [reactElement, reactElement]}, ref: null, type: Symbol(react.fragment)}
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }

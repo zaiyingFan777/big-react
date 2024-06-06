@@ -6,6 +6,7 @@ import {
 } from 'hostConfig';
 import { FiberNode } from './fiber';
 import {
+	Fragment,
 	FunctionComponent,
 	HostComponent,
 	HostRoot,
@@ -35,9 +36,6 @@ export const completeWork = (wip: FiberNode) => {
 
 	// 对于Host类型的fiberNode，构建离屏DOM树
 	switch (wip.tag) {
-		case HostRoot:
-			bubbleProperties(wip);
-			return null;
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
 				// update
@@ -86,7 +84,9 @@ export const completeWork = (wip: FiberNode) => {
 			}
 			bubbleProperties(wip);
 			return null;
+		case HostRoot:
 		case FunctionComponent:
+		case Fragment:
 			bubbleProperties(wip);
 			return null;
 		default:

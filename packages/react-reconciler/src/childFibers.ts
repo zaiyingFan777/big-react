@@ -1,11 +1,12 @@
-import { Props, ReactElementType } from 'shared/ReactTypes';
+import { Key, Props, ReactElementType } from 'shared/ReactTypes';
 import {
 	createFiberFromElement,
+	createFiberFromFragment,
 	createWorkInProgress,
 	FiberNode
 } from './fiber';
-import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols';
-import { HostText } from './workTags';
+import { REACT_ELEMENT_TYPE, REACT_FRAGMENT_TYPE } from 'shared/ReactSymbols';
+import { Fragment, HostText } from './workTags';
 import { ChildDeletion, Placement } from './fiberFlags';
 
 type ExistingChildren = Map<string | number, FiberNode>;
@@ -62,10 +63,15 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 				if (element.$$typeof === REACT_ELEMENT_TYPE) {
 					// key相同再去比较type
 					if (currentFiber.type === element.type) {
+						// fragment嵌套，见note.md
+						let props = element.props;
+						if (element.type === REACT_FRAGMENT_TYPE) {
+							props = element.props.children;
+						}
 						// type相同
 						// 可以复用
 						// TODO mount完毕后，第一次更新useFiber的时候是复用还是新建，需要尝试一下
-						const existing = useFiber(currentFiber, element.props);
+						const existing = useFiber(currentFiber, props);
 						existing.return = returnFiber;
 						// key相同、type相同，当前节点可以复用，后面节点标记删除
 						// A1B2C3->A1  A1复用、B2C3删除
@@ -94,7 +100,13 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 
 		// 创建新的（同mount流程）
 		// 根据element创建fiber
-		const fiber = createFiberFromElement(element);
+		let fiber;
+		if (element.type === REACT_FRAGMENT_TYPE) {
+			// 创建fragment的fiber  他的pendingProps不像其他的{children:xx}他就直接{$$typeof...}或者一个数组[reactElement, ...]没有children作为连接
+			fiber = createFiberFromFragment(element.props.children, key);
+		} else {
+			fiber = createFiberFromElement(element);
+		}
 		fiber.return = returnFiber;
 		return fiber;
 	}
@@ -242,6 +254,27 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		return firstNewFiber;
 	}
 
+	// elements为fragment的children
+	function updateFragment(
+		returnFiber: FiberNode,
+		current: FiberNode | undefined,
+		elements: any[],
+		key: Key,
+		existingChildren: ExistingChildren
+	) {
+		let fiber;
+		if (!current || current.tag !== Fragment) {
+			// 创建新的fragment fiber
+			fiber = createFiberFromFragment(elements, key);
+		} else {
+			// current存在，且更新前后都是fragment 复用
+			existingChildren.delete(key);
+			fiber = useFiber(current, elements);
+		}
+		fiber.return = returnFiber;
+		return fiber;
+	}
+
 	// 多节点diff，判断是否可以复用，返回复用的fiber或者新建的fiber
 	// element: 新的reactElement
 	function updateFromMap(
@@ -251,7 +284,8 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		element: any
 	): FiberNode | null {
 		// 有Key用key，无key用索引
-		const keyToUse = element.key !== null ? element.key : element.index;
+		// const keyToUse = element.key !== null ? element.key : element.index;
+		const keyToUse = getElementKeyToUse(element, index);
 		// 在existingChildren找到current fiber
 		const before = existingChildren.get(keyToUse);
 
@@ -281,6 +315,17 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		if (typeof element === 'object' && element !== null) {
 			switch (element.$$typeof) {
 				case REACT_ELEMENT_TYPE:
+					// 处理fragment
+					if (element.type === REACT_FRAGMENT_TYPE) {
+						// 见note.md 多节点
+						return updateFragment(
+							returnFiber,
+							before,
+							element,
+							keyToUse,
+							existingChildren
+						);
+					}
 					if (before) {
 						if (before.type === element.type) {
 							// key相同、type也相同，可以复用
@@ -309,7 +354,30 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 				console.warn('还未实现的数组类型的child');
 			}
 		}
+
+		// 见note.md 8.5把数组当成fragment来处理
+		// 我们当作数组来处理
+		if (Array.isArray(element)) {
+			return updateFragment(
+				returnFiber,
+				before,
+				element,
+				keyToUse,
+				existingChildren
+			);
+		}
 		return null;
+	}
+
+	function getElementKeyToUse(element: any, index?: number): Key {
+		if (
+			Array.isArray(element) ||
+			typeof element === 'string' ||
+			typeof element === 'number'
+		) {
+			return index;
+		}
+		return element.key !== null ? element.key : index;
 	}
 
 	// returnFiber父亲fiber(wip)
@@ -318,12 +386,51 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 	return function reconcileChildFibers(
 		returnFiber: FiberNode,
 		currentFiber: FiberNode | null,
-		newChild?: ReactElementType
+		newChild?: any
 	) {
+		// 判断fragment
+		const isUnkeyedTopLevelFragment =
+			typeof newChild === 'object' &&
+			newChild !== null &&
+			newChild.type === REACT_FRAGMENT_TYPE &&
+			newChild.key === null;
+		if (isUnkeyedTopLevelFragment) {
+			// 把数组赋值给newChild
+			// jsx
+			// <>
+			// 	<div></div>
+			// 	<div></div>
+			// </>
+			// jsxs(Fragment, {
+			// 	children: [
+			// 			jsx("div", {}),
+			// 			jsx("div", {})
+			// 	]
+			// });
+			// 上面这种情况，newChild变为数组后，会进入我们下面多节点diff数组的逻辑
+			newChild = newChild.props.children;
+
+			// ps:
+			// <>
+			// 	<span>111</span>
+			// </>
+			// /*#__PURE__*/_jsx(_Fragment, {
+			// 	children: /*#__PURE__*/_jsx("span", {
+			// 		children: "111"
+			// 	})
+			// });
+			// 这种情况就是单节点的diff因为newChild.props.children不是数组
+		}
 		// 单子节点reactelement: props: {children: {}}
 		// 多子节点reactelement: props: {children: [{},{},{}]}
 		// 判断当前fiber的类型
 		if (typeof newChild === 'object' && newChild !== null) {
+			// 多节点的情况 ul > li*3
+			if (Array.isArray(newChild)) {
+				// 多节点diff
+				return reconcileChildrenArray(returnFiber, currentFiber, newChild);
+			}
+
 			// 单节点的newChild是ReactElement，多节点的newChild是ReactElement数组
 			switch (newChild.$$typeof) {
 				// ps: 单节点、多节点diff是指更新后是单节点还是多节点
@@ -339,12 +446,6 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 					}
 					break;
 			}
-
-			// 多节点的情况 ul > li*3
-			if (Array.isArray(newChild)) {
-				// 多节点diff
-				return reconcileChildrenArray(returnFiber, currentFiber, newChild);
-			}
 		}
 
 		// HostText
@@ -356,7 +457,7 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 
 		if (currentFiber !== null) {
 			// 兜底操作
-			deleteChild(returnFiber, currentFiber);
+			deleteRemainingChildren(returnFiber, currentFiber);
 		}
 
 		if (__DEV__) {
