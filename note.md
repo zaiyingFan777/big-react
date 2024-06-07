@@ -301,3 +301,34 @@ jsxs('ul', {
   ]
 });
 ```
+
+## 9.Hook 数据类型、Update 数据类型（批处理需要特殊处理）
+
+FunctionComponent 的 fiberNode 中 memoizedState 属性为 Hook(useState、useEffect 等)单向链表，它的数据结构如下:
+
+1. 比如 useState 的 memoizedState 计算出来的值，next 指向下一个 hook，update 存储的是 action 和 dispatch 函数(setState)
+
+```
+interface Hook {
+	memoizedState: any;
+	updateQueue: unknown;
+	next: Hook | null;
+}
+```
+
+2. 我们再看一下 updateQueue 的数据结构，它存储的是 action 和 dispatch 函数(setState)
+
+```
+export interface UpdateQueue<State> {
+	shared: {
+		pending: Update<State> | null;
+	};
+	// 兼容Hooks
+	dispatch: Dispatch<State> | null;
+}
+export interface Update<State> {
+	action: Action<State>;
+}
+```
+
+todo updateQueue 中 update 需要改变数据结构，因为可能会触发多个更新 需要是环形链表(update 的 action 是环形链表)
