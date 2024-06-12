@@ -100,7 +100,7 @@ function recordHostChildrenToDelete(
 ) {
 	// 1.找到第一个root host节点
 	// 最后一个节点
-	let lastOne = childrenToDelete[childrenToDelete.length - 1];
+	const lastOne = childrenToDelete[childrenToDelete.length - 1];
 
 	if (!lastOne) {
 		// 如果还没有被记录，我们将umountFiber放到childrenToDelete数组中

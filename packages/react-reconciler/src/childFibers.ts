@@ -170,7 +170,7 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 		newChild: any[]
 	) {
 		// element(newChild[i])中遍历到的最后一个可复用的元素在current中的Index
-		let lastPlacedIndex: number = 0;
+		let lastPlacedIndex = 0;
 		// 创建的最后一个fiber(updateFromMap的返回值)
 		let lastNewFiber: FiberNode | null = null;
 		// 创建的第一个fiebr，最后也会返回这个

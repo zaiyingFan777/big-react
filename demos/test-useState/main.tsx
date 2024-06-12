@@ -65,33 +65,50 @@ console.log(import.meta.hot);
 // }
 
 // 测试Fragment
+// function App() {
+// 	const [num, setNum] = useState(100);
+// 	// return (
+// 	// 	<>
+// 	// 		<div>111</div>
+// 	// 		<div>222</div>
+// 	// 	</>
+// 	// );
+// 	// return (
+// 	// 	<ul>
+// 	// 		<>
+// 	// 			<li>1</li>
+// 	// 			<li>2</li>
+// 	// 		</>
+// 	// 		<li>3</li>
+// 	// 		<li>4</li>
+// 	// 	</ul>
+// 	// );
+// 	const arr =
+// 		num % 2 === 0
+// 			? [<li key="3">3</li>, <li key="4">4</li>, <li key="5">5</li>]
+// 			: [<li key="5">5</li>, <li key="4">4</li>, <li key="3">3</li>];
+// 	return (
+// 		<ul onClickCapture={() => setNum(num + 1)}>
+// 			<li key="1">1</li>
+// 			<li key="2">2</li>
+// 			{arr}
+// 		</ul>
+// 	);
+// }
+
+// 测试批处理
 function App() {
 	const [num, setNum] = useState(100);
-	// return (
-	// 	<>
-	// 		<div>111</div>
-	// 		<div>222</div>
-	// 	</>
-	// );
-	// return (
-	// 	<ul>
-	// 		<>
-	// 			<li>1</li>
-	// 			<li>2</li>
-	// 		</>
-	// 		<li>3</li>
-	// 		<li>4</li>
-	// 	</ul>
-	// );
-	const arr =
-		num % 2 === 0
-			? [<li key="3">3</li>, <li key="4">4</li>, <li key="5">5</li>]
-			: [<li key="5">5</li>, <li key="4">4</li>, <li key="3">3</li>];
+
 	return (
-		<ul onClickCapture={() => setNum(num + 1)}>
-			<li key="1">1</li>
-			<li key="2">2</li>
-			{arr}
+		<ul
+			onClickCapture={() => {
+				setNum((num) => num + 1);
+				setNum((num) => num + 1);
+				setNum((num) => num + 1);
+			}}
+		>
+			{num}
 		</ul>
 	);
 }

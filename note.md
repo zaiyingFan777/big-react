@@ -4,13 +4,13 @@
 mount: 孙子、儿子、父亲
 unmount: 父亲、儿子、孙子
 
-```
+```jsx
 useEffect(() => {
-  console.log('mount')
-  return () => {
-    console.log('unmount')
-  }
-}, [])
+	console.log('mount');
+	return () => {
+		console.log('unmount');
+	};
+}, []);
 ```
 
 ## 2.mount 完的第一次更新
@@ -35,7 +35,7 @@ setNum(200);
 
 比如：mount 完毕后，第一次更新为 setNum(3)
 
-```
+```jsx
 function App() {
 	const [num, setNum] = useState(100);
 	window.setNum = setNum;
@@ -50,32 +50,55 @@ function Child() {
 
 1. 根据 mount 后的 hostRootFiber，创建 wip，因为 fiberRootNode.current.alternate 存在，我们直接复用，接下来进入 hostRootFiber 的 beginWork 开始 diff App 组件，因为 App current 存在，但是他的 alternate 为 null（参考上面问题 2-mount 流程），因此第一次更新我们也要需要新建一个 App 的 wip fiberNode，并将 App current.child 等属性赋值给 wip App fiberNode，并且 wip app 与 current app 通过 alternate 相互连接，接下来开始 diff app wip fiberNode，这时候 cur/wip app fibernode 的 memoizedState.updateQueue.shared.pending.action 都为 3（本质是 cur app 上的更新，但是我们创建 wip app 的时候把 cur app.memoizedState 赋值给了 wip.memoizedState）,进入到 wip app beginwork，会赋值 update 时期的 useState，然后重新根据 acton: 3 重新计算 Num 为 3，见下面代码，接着就会执行 num === 3 为 true 的 jsxDEX()然后生成新的 reactElement(type: Child)，接着会 diff cur app.child(div)和 wip app.child(Child)[beginwork 的特点传入 fiber，diff 生成 child]，因为 div 和 Child 的 type 不同，需要删除 div fiber，生成 Child fiber，这时候 wip app fiber 上 deletions:[cur div fiber]，wip app 的 flags 标记删除（4），紧接着根据 child 的 reactelement 生成 child wip，并跟 wip app fiber 做好连接，因为 beginwork app 需要跟踪副作用(current !== null), beginwork wip app 生成 wip Child， 并给 wip child 添加 flag(1，新增)，这样 app 的 beginwork 工作就完成了(这里同理于 mount 的首屏优化，给 wip Child 打标记插入，但是 Child 的子组件 span、span 的子组件 text 都没有 flag，在 completework 的过程构建离屏 dom 树，在 commit 的时候插入)。
 
-```
+```jsx
 function App() {
-  _s();
-  const [num, setNum] = useState(100);
-  window.setNum = setNum;
-  return num === 3 ? /* @__PURE__ */ jsxDEV(Child, {}, void 0, false, {
-    fileName: "D:/workspace/big-react/demos/test-useState/main.tsx",
-    lineNumber: 18,
-    columnNumber: 22
-  }, this) : /* @__PURE__ */ jsxDEV("div", { children: num }, void 0, false, {
-    fileName: "D:/workspace/big-react/demos/test-useState/main.tsx",
-    lineNumber: 18,
-    columnNumber: 34
-  }, this);
+	_s();
+	const [num, setNum] = useState(100);
+	window.setNum = setNum;
+	return num === 3
+		? /* @__PURE__ */ jsxDEV(
+				Child,
+				{},
+				void 0,
+				false,
+				{
+					fileName: 'D:/workspace/big-react/demos/test-useState/main.tsx',
+					lineNumber: 18,
+					columnNumber: 22
+				},
+				this
+		  )
+		: /* @__PURE__ */ jsxDEV(
+				'div',
+				{ children: num },
+				void 0,
+				false,
+				{
+					fileName: 'D:/workspace/big-react/demos/test-useState/main.tsx',
+					lineNumber: 18,
+					columnNumber: 34
+				},
+				this
+		  );
 }
 ```
 
 2. 接下来进入 wip Child 的 beginwork 流程，因为 wip Child 的 alternate 为 null，所以我们不需要跟踪副作用（current 为 null，有点类似于首屏渲染的性能优化，completework 构建好离屏 Child 以及她下面子节点的 dom，直接插入 Child），执行 Child 函数，执行 jsxDEV 这样就得到了 span 的 reactElement，然后新建 span 的 wip fibernode。这样 Child wip 的 beginwork 完毕，得到 span 的 fibernode，接着进入 span 的 fibernode 类似于第一次 mount，生成文本的 wip fibernode，当然 span、文本的 wip fiber 的 flag 都为 0，只有 Child 的 flag 为 1，因为类似于首屏渲染
 
-```
+```js
 function Child() {
-  return /* @__PURE__ */ jsxDEV("span", { children: "big-react" }, void 0, false, {
-    fileName: "D:/workspace/big-react/demos/test-useState/main.tsx",
-    lineNumber: 23,
-    columnNumber: 10
-  }, this);
+	return /* @__PURE__ */ jsxDEV(
+		'span',
+		{ children: 'big-react' },
+		void 0,
+		false,
+		{
+			fileName: 'D:/workspace/big-react/demos/test-useState/main.tsx',
+			lineNumber: 23,
+			columnNumber: 10
+		},
+		this
+	);
 }
 ```
 
@@ -94,7 +117,7 @@ function Child() {
 
 insertBefore 是一个 DOM 方法，用于将一个新节点插入到父节点的子节点列表中，具体位置是在指定的参考节点之前。以下是 insertBefore 方法的一般用法：
 
-```
+```js
 语法
 parentElement.insertBefore(newNode, referenceNode);
 parentElement 是包含要插入节点的父元素。
@@ -109,7 +132,7 @@ referenceNode 是父元素中已经存在的一个子节点，newNode 将被插�
 
 关于移动操作，在 beginwork 中，我们通过 diff 会给需要插入或者移动的节点打上 Placement 的标签，然后在 commitwork 执行 Placement 标记的操作中，我们会找到被标记节点的 hostParent、sibling，如果找不到 sibling 就是 appendChild 操作，如果找到了要被插入节点的 sibling(稳定的)，我们就会执行 insertBefore 操作。
 
-```
+```ts
 const commitPlacement = (finishedWork: FiberNode) => {
 	// 我们需要知道parent dom
 	// 我们需要找到finishedWork对应的dom节点，才能插入到parent节点
@@ -132,7 +155,7 @@ const commitPlacement = (finishedWork: FiberNode) => {
 
 ## 7.[]形式 jsx 解析
 
-```
+```jsx
 // 非数组
 function App2(){
   return <div>
@@ -176,59 +199,62 @@ function App() {
 
 1. Fragment 下有多个节点
 
-```
+```jsx
 <>
-  <div>1</div>
-  <div>2</div>
-</>
+	<div>1</div>
+	<div>2</div>
+</>;
 
 // 编译出来的结果
-/*#__PURE__*/_jsxs(_Fragment, {
-  children: [/*#__PURE__*/_jsx("div", {
-    children: "1"
-  }), /*#__PURE__*/_jsx("div", {
-    children: "2"
-  })]
+/*#__PURE__*/ _jsxs(_Fragment, {
+	children: [
+		/*#__PURE__*/ _jsx('div', {
+			children: '1'
+		}),
+		/*#__PURE__*/ _jsx('div', {
+			children: '2'
+		})
+	]
 });
 ```
 
 2. Fragment 下只有一个节点
 
-```
+```jsx
 <>
-  <span>111</span>
-</>
+	<span>111</span>
+</>;
 
 // 编译出来的结果
-/*#__PURE__*/_jsx(_Fragment, {
-  children: /*#__PURE__*/_jsx("span", {
-    children: "111"
-  })
+/*#__PURE__*/ _jsx(_Fragment, {
+	children: /*#__PURE__*/ _jsx('span', {
+		children: '111'
+	})
 });
 ```
 
 3. Fragment 嵌套
 
-```
+```jsx
 <>
-  <>
-    <span>111</span>
-  </>
-</>
+	<>
+		<span>111</span>
+	</>
+</>;
 
 // 编译出来的结果
-/*#__PURE__*/_jsx(_Fragment, {
-  children: /*#__PURE__*/_jsx(_Fragment, {
-    children: /*#__PURE__*/_jsx("span", {
-      children: "111"
-    })
-  })
+/*#__PURE__*/ _jsx(_Fragment, {
+	children: /*#__PURE__*/ _jsx(_Fragment, {
+		children: /*#__PURE__*/ _jsx('span', {
+			children: '111'
+		})
+	})
 });
 ```
 
 4. 多节点 diff 中有子节点是 Fragment 的情况
 
-```
+```jsx
 <ul>
   <>
     <li>1</li>
@@ -271,7 +297,7 @@ jsxs('ul', {
 
 5. 数组形式的 Fragment(diff 的时候把数组当作 fragment 来处理)
 
-```
+```jsx
 // arr = [<li>c</li>, <li>d</li>]
 
 <ul>
@@ -308,7 +334,7 @@ FunctionComponent 的 fiberNode 中 memoizedState 属性为 Hook(useState、useE
 
 1. 比如 useState 的 memoizedState 计算出来的值，next 指向下一个 hook，update 存储的是 action 和 dispatch 函数(setState)
 
-```
+```ts
 interface Hook {
 	memoizedState: any;
 	updateQueue: unknown;
@@ -318,7 +344,7 @@ interface Hook {
 
 2. 我们再看一下 updateQueue 的数据结构，它存储的是 action 和 dispatch 函数(setState)
 
-```
+```ts
 export interface UpdateQueue<State> {
 	shared: {
 		pending: Update<State> | null;
@@ -331,4 +357,29 @@ export interface Update<State> {
 }
 ```
 
-todo updateQueue 中 update 需要改变数据结构，因为可能会触发多个更新 需要是环形链表(update 的 action 是环形链表)
+3. updateQueue 中 update 需要改变数据结构，因为可能会触发多个更新(批处理)，需要是环形链表(update 的 action 是环形链表)，以及 update 结构增加 lane
+
+```ts
+export interface Update<State> {
+	action: Action<State>;
+	lane: Lane;
+	next: Update<any> | null;
+}
+
+// 创建Update实例的方法
+export const createUpdate = <State>(
+	action: Action<State>,
+	lane: Lane
+): Update<State> => {
+	return {
+		action,
+		lane,
+		next: null
+	};
+};
+```
+
+## 10.批处理(Batch Update)
+
+1. svelte、vue 批处理是在微任务中处理的
+2. react 不开启并发更新也是在微任务中，开启并发更新是在宏任务中进行的。

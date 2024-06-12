@@ -11,6 +11,7 @@ import {
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig'; // tsconfig.json中配置了
+import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 
 // jsx 经过babel编译为 jsx() React.createElement()，之后调用jsx()或React.createElement()[这里面是我们实现的jsx]会生成 ReactElement
 // ReactElement => FiberNode => DOM
@@ -134,12 +135,15 @@ export class FiberRootNode {
 	container: Container; // 对于浏览器是DOMElement，其他环境是其他环境的节点
 	current: FiberNode; // hostRootFiber
 	finishedWork: FiberNode | null; // 我们整个更新完成以后的hostRootFiber，也就是当前更新完成递归流程的hsotRootFiber
-
+	pendingLanes: Lanes; // 所有未被消费的lane的集合
+	finishedLane: Lane; // 本次更新schedule选择出来要被消费的lane
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
 		hostRootFiber.stateNode = this;
 		this.finishedWork = null;
+		this.pendingLanes = NoLanes;
+		this.finishedLane = NoLane;
 	}
 }
 

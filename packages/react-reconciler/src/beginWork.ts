@@ -24,16 +24,17 @@ import {
 } from './workTags';
 import { mountChildFibers, reconcileChildFibers } from './childFibers';
 import { renderWithHooks } from './fiberHooks';
+import { Lane } from './fiberLanes';
 
-// 递归中的递阶段
-export const beginWork = (wip: FiberNode) => {
+// 递归中的递阶段，renderLane本次更新的lane
+export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	// 比较，返回子fiberNode
 	switch (wip.tag) {
 		case HostRoot:
 			// HostRoot的beginWork工作流程
 			// 1.计算状态的最新值
 			// 2.创造子fiberNode
-			return updateHostRoot(wip);
+			return updateHostRoot(wip, renderLane);
 		case HostComponent:
 			// HostComponent的beginWork工作流程
 			// 1.创造子fiberNode
@@ -43,7 +44,7 @@ export const beginWork = (wip: FiberNode) => {
 			// <p>唱跳Rap</p>
 			return null; // 递阶段完事，开始归阶段
 		case FunctionComponent:
-			return updateFunctionComponent(wip); // 递阶段完事，开始归阶段
+			return updateFunctionComponent(wip, renderLane); // 递阶段完事，开始归阶段
 		case Fragment:
 			return updateFragment(wip);
 		default:
@@ -60,7 +61,7 @@ export const beginWork = (wip: FiberNode) => {
 // 从而得到儿子wip fiberNode
 
 // HostRootFiber的beginwork流程
-function updateHostRoot(wip: FiberNode) {
+function updateHostRoot(wip: FiberNode, renderLane: Lane) {
 	// 1.计算状态最新值
 	const baseState = wip.memoizedState; // 首屏渲染不存在
 	const updateQueue = wip.updateQueue as UpdateQueue<Element>;
@@ -75,7 +76,7 @@ function updateHostRoot(wip: FiberNode) {
 	// 然后又将updateQueue.shared.pending指向了null
 	updateQueue.shared.pending = null;
 	// 计算状态
-	const { memoizedState } = processUpdateQueue(baseState, pending);
+	const { memoizedState } = processUpdateQueue(baseState, pending, renderLane);
 	// 将最新的状态赋值给wip，这里memoizedState是根组件<App/>jsx生成的ReactElement
 	wip.memoizedState = memoizedState;
 
@@ -119,7 +120,7 @@ function updateHostComponent(wip: FiberNode) {
 }
 
 // FunctionComponent的beginwork流程
-function updateFunctionComponent(wip: FiberNode) {
+function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
 	// 流程：普通jsx像下面的 babel帮我们生成jsx(div,{jsx(span)})然后再执行我们的jsx方法得到ReactElement，然后开始ReactDOM.createRoot(root).render(jsx(ReactElement));方法的流程
 	// const jsx = (
 	// 	<div><span>big-react</span></div>
@@ -169,7 +170,7 @@ function updateFunctionComponent(wip: FiberNode) {
 	// 当我们拿到App函数然后在renderWithHooks里面执行，因为仍然是jsx编译好的React.creatElement('div'...)，所以会执行我们在react包里写好的React.creatElement方法
 	// 并把这些参数传递进去，得到children(ReactElement),,如果里面reactElement还有子组件到时候仍然需要先执行函数再执行jsx()得到ReactElement
 	// fiber.type 组件函数本身
-	const nextChildren = renderWithHooks(wip);
+	const nextChildren = renderWithHooks(wip, renderLane);
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }

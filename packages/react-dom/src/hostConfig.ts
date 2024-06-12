@@ -74,3 +74,26 @@ export function insertChildToContainer(
 ) {
 	container.insertBefore(child, before);
 }
+
+// (callback: (...args: any) => void) => Promise.resolve(null).then(callback)
+// Promise.resolve(null)：这个箭头函数返回一个Promise对象。Promise.resolve(null)是一个静态方法，它创建一个已经解决（fulfilled）的Promise，其结果值为null。
+// .then(callback)：这是Promise对象的then方法，它接受一个函数作为参数，这个函数将在Promise解决时被调用。在这个例子中，传入的回调函数callback将在Promise解决后执行。
+// 整体来看，这段代码意思：创建一个已经解决的Promise对象，然后使用.then方法注册一个回调函数，当Promise解决时，执行这个回调函数。
+// 这种模式通常用于将传统的回调函数模式转换为基于Promise的异步模式
+/**
+ * function test() {
+ *   console.log('2222')
+ * }
+ * const test2 = (callback) => Promise.resolve(null).then(callback);
+ * test2(test);
+ * console.log('1111')
+ *
+ * 打印：1111 2222
+ */
+
+export const scheduleMicroTask =
+	typeof queueMicrotask === 'function'
+		? queueMicrotask
+		: typeof Promise === 'function'
+		? (callback: (...args: any) => void) => Promise.resolve(null).then(callback)
+		: setTimeout;
