@@ -26,6 +26,8 @@ export function flushSyncCallbacks() {
 		} finally {
 			// 重置变量
 			isFlushingSyncQueue = false;
+			// 清空微任务队列
+			syncQueue = null;
 		}
 	}
 }
