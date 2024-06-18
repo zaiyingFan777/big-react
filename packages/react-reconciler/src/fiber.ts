@@ -12,6 +12,7 @@ import {
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig'; // tsconfig.json中配置了
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
+import { Effect } from './fiberHooks';
 
 // jsx 经过babel编译为 jsx() React.createElement()，之后调用jsx()或React.createElement()[这里面是我们实现的jsx]会生成 ReactElement
 // ReactElement => FiberNode => DOM
@@ -75,9 +76,10 @@ export class FiberNode {
 	flags: Flags;
 	// 子树中是否有更新
 	subtreeFlags: Flags;
-	// 更新，比如mount的时候(首屏渲染)，hostRootFiber的updateQueue放的就是要渲染的所有组件
-	// HostComponent组件更新属性变化 将变化的属性存放在updateQueue中 : [n, n+1] 第n项为变化的属性，第n+1项为变化的属性值，比如[className, 'aaa', title, 'hahah']
+	// 1.更新，比如mount的时候(首屏渲染)，hostRootFiber的updateQueue放的就是要渲染的所有组件
+	// 2.HostComponent组件更新属性变化 将变化的属性存放在updateQueue中 : [n, n+1] 第n项为变化的属性，第n+1项为变化的属性值，比如[className, 'aaa', title, 'hahah']
 	// n为key n+1为value
+	// 3.对于fc组件，updateQueue中lastEffect存储的是effect hooks的环形链表的最后一个(updateQueue属性中有1.shared.pending 2.dispatch 3.lastEffect(指向fc组件中最后一个effect))
 	updateQueue: unknown;
 	deletions: FiberNode[] | null;
 
@@ -120,6 +122,11 @@ export class FiberNode {
 	}
 }
 
+export interface PendingPassiveEffects {
+	unmount: Effect[];
+	update: Effect[];
+}
+
 /**
  * 更新可能发生于任意组件，而更新流程是从根节点递归的
  * 需要一个统一的根节点保存通用信息
@@ -137,6 +144,7 @@ export class FiberRootNode {
 	finishedWork: FiberNode | null; // 我们整个更新完成以后的hostRootFiber，也就是当前更新完成递归流程的hsotRootFiber
 	pendingLanes: Lanes; // 所有未被消费的lane的集合
 	finishedLane: Lane; // 本次更新schedule选择出来要被消费的lane
+	pendingPassiveEffects: PendingPassiveEffects; // 收集的effect副作用的回调
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
@@ -144,6 +152,10 @@ export class FiberRootNode {
 		this.finishedWork = null;
 		this.pendingLanes = NoLanes;
 		this.finishedLane = NoLane;
+		this.pendingPassiveEffects = {
+			unmount: [],
+			update: []
+		};
 	}
 }
 

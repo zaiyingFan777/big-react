@@ -14,7 +14,9 @@ export function scheduleSyncCallback(callback: (...args: any) => void) {
 
 // 执行
 export function flushSyncCallbacks() {
+	// console.log('flushSyncCallbacks');
 	if (!isFlushingSyncQueue && syncQueue) {
+		// console.log('flushSyncCallbacks start');
 		// 当前没有执行微任务，并且微任务存在
 		isFlushingSyncQueue = true;
 		try {

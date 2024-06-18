@@ -1,8 +1,8 @@
 ## 1.useEffect 执行顺序
 
 包含父亲->儿子->孙子
-mount: 孙子、儿子、父亲
-unmount: 父亲、儿子、孙子
+mount: 孙子、儿子、父亲(原因：commitMutationEffects 会根据 subtreeflag 或者 flag 一直往下找，直到找到有对应 flag 的 fiber 进行收集，然后再往上收集，因此是先孙、子、后父亲)
+unmount: 父亲、儿子、孙子(删除，操作 commitDeletion 是递归向下，因此父亲、儿子、孙子)
 
 ```jsx
 useEffect(() => {
@@ -11,6 +11,71 @@ useEffect(() => {
 		console.log('unmount');
 	};
 }, []);
+
+// 实例1
+function App() {
+	const [num, updateNum] = useState(0);
+	useEffect(() => {
+		console.log('App mount');
+	}, []);
+
+	useEffect(() => {
+		console.log('num change create', num);
+		return () => {
+			console.log('num change destroy', num);
+		};
+	}, [num]);
+
+	return (
+		<div onClick={() => updateNum(num + 1)}>
+			{num === 0 ? <Child /> : 'noop'}
+		</div>
+	);
+}
+
+function Child() {
+	useEffect(() => {
+		console.log('Child mount');
+		return () => console.log('Child unmount');
+	}, []);
+
+	return 'i am child';
+}
+
+// mount时打印：Child mount、App mount、num change create 0
+// mount原因分析：mount时执行mountEffect的逻辑，因此给App、Child的fiber.flag增加了PassiveEffect的标记，并且给fiber.memoizedState的hook链表中添加了useEffect的hook，并且他们Hook的tag为Passive | HookHasEffect，在commitRoot的mutation阶段收集副作用，递归顺序是先找到flag带有PassiveEffect的最深的fiber，然后想上找，因此进入到fiberRootNode的pendingPassiveEffects的update数组中是[child.updateQueue.lastEffect，app.updateQueue.lastEffect]。因此在调度过程中flushPassiveEffects函数执行，因为unmount数组为空，update数组中这些链表并没有destroy函数，只会执行下面这个操作。因此打印顺序就是child mount、app mount、num change create 0【hook链表顺序】，执行完后，清空update数组，但是effect的destroy被create()执行后返回的函数所赋值
+pendingPassiveEffects.update.forEach((effect) => {
+	commitHookEffectListCreate(Passive | HookHasEffect, effect);
+});
+
+// 点击后更新时打印：Child unmount、num change destroy 0、num change create 1
+// 原因分析：点击后属于更新，因此执行updateEffect，1.对于依赖项变化的变化的或者没有依赖项的我们会给fiber.flag加上PassiveEffect的标记同时hook effect的tag为Passive | HookHasEffect，对于空数组或者依赖项没变的fiber不增加标记同时hook effect我们给予的tag是Passive。2.由于num改变导致child被卸载，因此在commitRoot的mutation阶段收集副作用，对于卸载的组件我们的遍历顺序是从上往下挨个执行，因此收集unmount的副作用也是从父亲到儿子到孙子节点的顺序收集到unmount数组中。因此对于flushPassiveEffects先去清空unmount数组【组件卸载】，清空的对象是Passive的useEffect的destroy，因此打印顺序是从Child unmount如果有子孙节点那么顺序为Child、Grandson等并且给effect的tag移除HookHasEffect因为Child组件已经卸载了防止后面遍历update数组再次触发副作用。3.在updateEffect中我们会通过比较依赖关系给App第一个effect打上tag为Passive【因为他的依赖项没有变化】，第二个effect中由于num变化了，因此会给这个hook的tag打上Passive | HookHasEffect并且给app fiber打上PassiveEffect标记，这样使得在commitRoot的mutation阶段会扫描到PassiveEffect的标记，因此update数组会添加app组件的updateQueue.lastEffect。这样在flusPassiveEffect的update第一次遍历的时候执行destroy，打印出来num change destroy 0，然后在update数组第二次遍历执行create函数的时候打印num change create 1
+function flushPassiveEffects(pendingPassiveEffects: PendingPassiveEffects) {
+	// 1.遍历effect
+	// 2.首先触发所有unmount effect，且对于某个fiber，如果触发了unmount destroy，本次更新不会再触发update create[commitHookEffectListUnmount]
+	pendingPassiveEffects.unmount.forEach((effect) => {
+		// 卸载
+		commitHookEffectListUnmount(Passive, effect);
+	});
+	// 置空pendingPassiveEffects.unmount
+	pendingPassiveEffects.unmount = [];
+	// 3.触发所有上次更新的destroy
+	pendingPassiveEffects.update.forEach((effect) => {
+		// effect.tag需要是Passive 以及 HookHasEffect才会触发destroy
+		// 因此对于虽然是useEffect但是没有标记HookHasEffect的，他就【不会执行触发destroy的操作】
+		commitHookEffectListDestroy(Passive | HookHasEffect, effect);
+	});
+
+	// 4.触发所有这次更新的create
+	pendingPassiveEffects.update.forEach((effect) => {
+		commitHookEffectListCreate(Passive | HookHasEffect, effect);
+	});
+
+	pendingPassiveEffects.update = [];
+
+	// 回调中可能有setState，需要执行更新
+	flushSyncCallbacks();
+}
 ```
 
 ## 2.mount 完的第一次更新
@@ -357,7 +422,7 @@ export interface Update<State> {
 }
 ```
 
-3. updateQueue 中 update 需要改变数据结构，因为可能会触发多个更新(批处理)，需要是环形链表(update 的 action 是环形链表)，以及 update 结构增加 lane
+3. updateQueue 中 update 需要改变数据结构，因为可能会触发多个更新(批处理)，需要是环形链表(update 的 action 是环形链表)，以及 update 结构增加 lane，注意：UpdateQueue.shared.pending 是 update 的环形链表，它指向最后一个进来的 update，因此 UpdateQueue.shared.pending.next 指向第一个进来的 update。
 
 ```ts
 export interface Update<State> {
@@ -383,3 +448,61 @@ export const createUpdate = <State>(
 
 1. svelte、vue 批处理是在微任务中处理的
 2. react 不开启并发更新也是在微任务中，开启并发更新是在宏任务中进行的。
+
+## 11.fc 中的字段 memoizedState 字段存储的是 hooks(useState、useEffect)单向链表
+
+```ts
+interface Hook {
+	// 对于useState，memoizedState是计算的state值
+	// 对于useEffect，memoizedState是Effect数据结构
+	memoizedState: any;
+	// 对于useState，updateQueue是中shared.pending是update的环状链表，dispatch是更新函数(setState)
+	updateQueue: unknown;
+	// 连接下一个hook
+	next: Hook | null;
+}
+```
+
+useEffect、useLayoutEffect、useInsertionEffect 触发时机不一致
+
+1. useEffect 在依赖变化后，当前 commit 阶段完成以后异步执行。
+2. useLayoutEffect、useInsertionEffect 当前 commit 阶段完成后同步执行。其中 useInsertionEffect 执行的时候还拿不到 dom 的引用。
+
+useEffect hook 数据结构，存在于 fiber.memoizedState 中 hook 链表中 effect Hook 的 memoizedState（见上文 Hook.memoizedState）属性中。然后 Effect.next 指向下一个 fc hook 的 useEffect（存在于下一个 hook 的.memoizedState 中）的 memoizedState，fiber.updateQueue.lastEffect 指向本 fc 组件的最后一个 effect 。
+
+```ts
+// effect数据结构，存在于fiber.memoizedState属性中的Hook.memoizedState中
+// effect环状链表又保存在fiber.updateQueue中
+export interface Effect {
+	tag: Flags;
+	create: EffectCallback | void; // 1.mount时 2.依赖变化时，触发create回调
+	destroy: EffectCallback | void; // 函数组件销毁时，触发回调
+	deps: EffectDeps;
+	next: Effect | null; // 环状链表，指向下一个effect(hook.memoizedState)，不需要遍历hook链表就可以找到下一个effect相关hook数据
+}
+
+type EffectCallback = () => void;
+type EffectDeps = any[] | null;
+
+// 函数组件fiber的UpdateQueue
+export interface FCUpdateQueue<State> extends UpdateQueue<State> {
+	lastEffect: Effect | null; // 指向effect链表的最后一个，那么lastEffect.next就指向第一个effect
+}
+```
+
+## 12. effect 工作流程
+
+1. commit 阶段：
+   - 调度副作用：在执行 mutation 阶段之前
+   - 执行副作用：scheduleCallback(优先级，回调函数)，异步的调度回调函数
+   - 收集副作用：收集到 fiberRootNode 的 pendingPassiveEffects 属性中，分两种情况
+     - 1.commitRoot 阶段 fiberNode 标记了 PassiveEffect，commitMutationEffectsOnFiber 中做收集（收集到 pendingPassiveEffects.update 中）
+     - 2.删除的情况，在 commitMutationEffectsOnFiber 中执行删除操作的时候，commitDeletion 递归删除子组件遇到 fc 组件，收集 destory 回调函数。
+
+```
+render阶段（FC fiberNode存在副作用PassiveEffect）
+		⬇
+commit阶段（1.调度副作用、2.收集回调）
+		⬇
+执行副作用
+```

@@ -1,9 +1,19 @@
 import { scheduleMicroTask } from 'hostConfig';
 import { beginWork } from './beginWork';
-import { commitMutationEffects } from './commitWork';
+import {
+	commitHookEffectListCreate,
+	commitHookEffectListDestroy,
+	commitHookEffectListUnmount,
+	commitMutationEffects
+} from './commitWork';
 import { completeWork } from './completeWork';
-import { createWorkInProgress, FiberNode, FiberRootNode } from './fiber';
-import { MutationMask, NoFlags } from './fiberFlags';
+import {
+	createWorkInProgress,
+	FiberNode,
+	FiberRootNode,
+	PendingPassiveEffects
+} from './fiber';
+import { MutationMask, NoFlags, PassiveMask } from './fiberFlags';
 import {
 	getHighestPriorityLane,
 	Lane,
@@ -14,11 +24,19 @@ import {
 } from './fiberLanes';
 import { flushSyncCallbacks, scheduleSyncCallback } from './syncTaskQueue';
 import { HostRoot } from './workTags';
+// 调度器
+import {
+	unstable_scheduleCallback as scheduleCallback,
+	unstable_NormalPriority as NormalPriority
+} from 'scheduler';
+import { HookHasEffect, Passive } from './hookEffectTags';
 
 // 内存中构建的dom树(最初是hostRootFiber)
 let workInProgress: FiberNode | null = null;
 // 本次更新的lane是什么
 let wipRootRenderLane: Lane = NoLane;
+// 防止副作用被多次调度
+let rootDoesHasPassiveEffects: boolean = false;
 
 // ReactDOM.createRoot(rootElement).render(<App/>)中的container与performSyncWorkOnRoot连接上
 // 在fiber中调度update
@@ -247,16 +265,37 @@ function commitRoot(root: FiberRootNode) {
 	// pendingLanes移除本次更新的优先级
 	markRootFinished(root, lane);
 
+	// 调度副作用
+	if (
+		(finishedWork.flags & PassiveMask) !== NoFlags ||
+		(finishedWork.subtreeFlags & PassiveMask) !== NoFlags
+	) {
+		// 当前fiber树中 存在函数组件需要执行useEffect回调的
+		if (!rootDoesHasPassiveEffects) {
+			// 防止多次执行commitRoot多次调度副作用
+			rootDoesHasPassiveEffects = true;
+			// 调度副作用，通过scheduleCallback按照NormalPriority的优先级来调度回调函数(第二个参数，这个回调函数会在setTimeout里面被调度)
+			// 这里是异步操作，因此同步代码(commitRoot)先执行，执行完才会执行这里第二个参数(回调函数) 执行副作用
+			scheduleCallback(NormalPriority, () => {
+				// 执行副作用
+				// 收集依赖是在Mutation中，因为这里是被异步调度，所以能够拿到root.pendingPassiveEffects
+				flushPassiveEffects(root.pendingPassiveEffects);
+				return;
+			});
+		}
+	}
+
 	// 判断是否存在三个子阶段需要执行的操作
 	// root flags、root subtreeFlags
 	const subtreeHasEffect =
-		(finishedWork.subtreeFlags & MutationMask) !== NoFlags;
-	const rootHasEffect = (finishedWork.flags & MutationMask) !== NoFlags;
+		(finishedWork.subtreeFlags & (MutationMask | PassiveMask)) !== NoFlags;
+	const rootHasEffect =
+		(finishedWork.flags & (MutationMask | PassiveMask)) !== NoFlags;
 
 	if (subtreeHasEffect || rootHasEffect) {
 		// beforeMutation阶段
 		// mutation阶段
-		commitMutationEffects(finishedWork);
+		commitMutationEffects(finishedWork, root);
 		// fiber树切换在mutation和layout之间
 		root.current = finishedWork;
 
@@ -266,5 +305,38 @@ function commitRoot(root: FiberRootNode) {
 		root.current = finishedWork;
 	}
 
+	// 重置rootDoesHasPassiveEffects
+	rootDoesHasPassiveEffects = false;
+	// 重新调度
+	ensureRootIsScheduled(root);
 	console.log(root.current);
+}
+
+// 执行effect回调
+// 本次更新的任何create回调都必须在所有上一次更新的destroy回调执行完后再执行。
+function flushPassiveEffects(pendingPassiveEffects: PendingPassiveEffects) {
+	// 1.遍历effect
+	// 2.首先触发所有unmount effect，且对于某个fiber，如果触发了unmount destroy，本次更新不会再触发update create[commitHookEffectListUnmount]
+	pendingPassiveEffects.unmount.forEach((effect) => {
+		// 卸载
+		commitHookEffectListUnmount(Passive, effect);
+	});
+	// 置空pendingPassiveEffects.unmount
+	pendingPassiveEffects.unmount = [];
+	// 3.触发所有上次更新的destroy
+	pendingPassiveEffects.update.forEach((effect) => {
+		// effect.tag需要是Passive 以及 HookHasEffect才会触发destroy
+		// 因此对于虽然是useEffect但是没有标记HookHasEffect的，他就【不会执行触发destroy的操作】
+		commitHookEffectListDestroy(Passive | HookHasEffect, effect);
+	});
+
+	// 4.触发所有这次更新的create
+	pendingPassiveEffects.update.forEach((effect) => {
+		commitHookEffectListCreate(Passive | HookHasEffect, effect);
+	});
+
+	pendingPassiveEffects.update = [];
+
+	// 回调中可能有setState，需要执行更新
+	flushSyncCallbacks();
 }

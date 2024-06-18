@@ -11,6 +11,8 @@ import {
 import { Action } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
+import { Flags, PassiveEffect } from './fiberFlags';
+import { HookHasEffect, Passive } from './hookEffectTags';
 
 const { currentDispatcher } = internals;
 
@@ -31,11 +33,31 @@ interface Hook {
 	next: Hook | null;
 }
 
+// effect数据结构，存在于fiber.memoizedState属性中的Hook.memoizedState中
+// effect环状链表又保存在fiber.updateQueue中
+export interface Effect {
+	tag: Flags;
+	create: EffectCallback | void; // 1.mount时 2.依赖变化时，触发create回调
+	destroy: EffectCallback | void; // 函数组件销毁时，触发回调
+	deps: EffectDeps;
+	next: Effect | null; // 环状链表，指向下一个effect(hook.memoizedState)，不需要遍历hook链表就可以找到下一个effect相关hook数据
+}
+
+type EffectCallback = () => void;
+type EffectDeps = any[] | null;
+
+// 函数组件的UpdateQueue
+export interface FCUpdateQueue<State> extends UpdateQueue<State> {
+	lastEffect: Effect | null; // 指向effect链表的最后一个，那么lastEffect.next就指向第一个effect
+}
+
 export function renderWithHooks(wip: FiberNode, lane: Lane) {
 	// 将wip赋值给当前正在render的currentlyRenderingFiber
 	currentlyRenderingFiber = wip;
 	// 重置 wip.memoizedState保存的是hooks链表
 	wip.memoizedState = null;
+	// 重置effect链表
+	wip.updateQueue = null;
 	renderLane = lane;
 
 	const current = wip.alternate;
@@ -70,12 +92,153 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 
 // mount阶段hooks实现的集合
 const HooksDispatcherOnMount: Dispatcher = {
-	useState: mountState
+	useState: mountState,
+	useEffect: mountEffect
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
-	useState: updateState
+	useState: updateState,
+	useEffect: updateEffect
 };
+
+function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+	// 找到当前useEffect对应的hook数据
+	const hook = mountWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	// 当前函数fiber增加PassiveEffect
+	// mount时需要处理effect副作用
+	(currentlyRenderingFiber as FiberNode).flags |= PassiveEffect;
+	// 因为是mount所以我们需要执行create，因此useEffect的tag需要是Passive | HookHasEffect
+	hook.memoizedState = pushEffect(
+		Passive | HookHasEffect,
+		create,
+		undefined,
+		nextDeps
+	);
+}
+
+function updateEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+	// 找到当前useEffect对应的hook数据
+	const hook = updateWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	let destroy: EffectCallback | void;
+
+	if (currentHook !== null) {
+		const prevEffect = currentHook.memoizedState as Effect;
+		destroy = prevEffect.destroy;
+
+		if (nextDeps !== null) {
+			// 浅比较依赖
+			const prevDeps = prevEffect.deps;
+			if (areHookInputsEqual(nextDeps, prevDeps)) {
+				// 依赖没有变，不应该触发回调
+				hook.memoizedState = pushEffect(Passive, create, destroy, nextDeps);
+				return;
+			}
+		}
+		// 浅比较后不相等，需要执行回调函数(副作用)
+		(currentlyRenderingFiber as FiberNode).flags |= PassiveEffect;
+		hook.memoizedState = pushEffect(
+			Passive | HookHasEffect,
+			create,
+			destroy,
+			nextDeps
+		);
+	}
+}
+
+// 浅比较依赖
+function areHookInputsEqual(nextDeps: EffectDeps, prevDeps: EffectDeps) {
+	if (prevDeps === null || nextDeps === null) {
+		// 比较失败，比如useEffect第二个参数没有执行，因此每次都得执行useEffect
+		return false;
+	}
+	for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+		// ps: Object.is
+		// Object.is 是 JavaScript 中的一个静态方法，它用于比较两个值是否严格相等。与 === 操作符不同，Object.is 会按照以下规则比较两个值：
+		// 如果两个值都是 NaN，则 Object.is 返回 true。而 === 在比较 NaN 时总是返回 false。
+		// 如果两个值中的任何一个是 +0，另一个是 -0，则 Object.is 返回 false。而 === 在比较 +0 和 -0 时会返回 true。
+		// 所有其他情况下，Object.is 的行为与严格等于操作符 === 相同。
+
+		// 以下是一些 Object.is 的使用示例：
+
+		// Object.is(1, 1); // true
+		// Object.is(1, '1'); // false
+
+		// Object.is(0, -0); // false
+		// Object.is(-0, -0); // true
+
+		// Object.is(NaN, NaN); // true
+		// Object.is(NaN, Object.create(null)); // false
+
+		// Object.is(null, null); // true
+		// Object.is(undefined, undefined); // true
+		// Object.is 主要用于确保比较的严格性，特别是在处理 NaN 和零值时。
+		if (Object.is(prevDeps[i], nextDeps[i])) {
+			continue;
+		}
+		return false;
+	}
+	// 全等返回true
+	return true;
+}
+
+function pushEffect(
+	hookFlags: Flags,
+	create: EffectCallback | void,
+	destroy: EffectCallback | void,
+	deps: EffectDeps
+): Effect {
+	const effect: Effect = {
+		tag: hookFlags,
+		create,
+		destroy,
+		deps,
+		next: null
+	};
+	// 取到当前的fiber
+	const fiber = currentlyRenderingFiber as FiberNode;
+	// effect环状链表又保存在fiber.updateQueue中的lastEffect属性上
+	const updateQueue = fiber.updateQueue as FCUpdateQueue<any>;
+	if (updateQueue === null) {
+		// 如果fiber上没有UpdateQueue
+		// 则我们创建updateQueue
+		const updateQueue = createFCUpdateQueue();
+		fiber.updateQueue = updateQueue;
+		// 第一个useEffect 跟自己构成环状链表
+		effect.next = effect;
+		// fc组件的updateQueue属性的lastEffect指向最后一个effect
+		updateQueue.lastEffect = effect;
+	} else {
+		// updateQueue存在
+		// 插入effect
+		const lastEffect = updateQueue.lastEffect;
+		if (lastEffect === null) {
+			effect.next = effect;
+			updateQueue.lastEffect = effect;
+		} else {
+			// fiber.updateQueue.lastEffect指向最后一个effect
+			// 那么他的.next指向第一个effect
+
+			// a->b->a
+			// first: a
+			const firstEffect = lastEffect.next;
+			// b -> c (a -> b)
+			lastEffect.next = effect;
+			// c -> a (a -> b)
+			effect.next = firstEffect;
+			// 指向最后一个c
+			updateQueue.lastEffect = effect;
+		}
+	}
+	return effect;
+}
+
+function createFCUpdateQueue<State>() {
+	const updateQueue = createUpdateQueue<State>() as FCUpdateQueue<State>;
+	updateQueue.lastEffect = null;
+	return updateQueue;
+}
 
 function updateState<State>(): [State, Dispatch<State>] {
 	// 找到当前useState对应的hook数据
