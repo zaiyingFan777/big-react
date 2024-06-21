@@ -10,5 +10,15 @@ module.exports = {
     // 对于第三方依赖，使用默认配置比如根目录的node_modules
     ...defaults.moduleDirectories
   ],
-  testEnvironment: 'jsdom'
+  testEnvironment: 'jsdom',
+  moduleNameMapper: {
+    '^scheduler$': '<rootDir>/node_modules/scheduler/unstable_mock.js'
+  },
+  fakeTimers: {
+    enableGlobally: true,
+    legacyFakeTimers: true
+  },
+  setupFilesAfterEnv: ['./scripts/jest/setupJest.js']
 };
+
+// pnpm test ReactEffectOrdering-test

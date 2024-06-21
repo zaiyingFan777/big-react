@@ -3,9 +3,9 @@ import { HostComponent, HostText } from 'react-reconciler/src/workTags';
 import { Props } from 'shared/ReactTypes';
 import { DOMElement, updateFiberProps } from './SyntheticEvent';
 
-export type Container = Element;
-export type Instance = Element;
-export type TextInstance = Text;
+export type Container = Element; // hostRoot
+export type Instance = Element; // hostComponent
+export type TextInstance = Text; // hostText
 
 // 创建要被插入DOM
 export const createInstance = (type: string, props: Props): Instance => {
@@ -43,7 +43,8 @@ export function commitUpdate(fiber: FiberNode) {
 		case HostText:
 			const text = fiber.memoizedProps?.content;
 			return commitTextUpdate(fiber.stateNode, text);
-
+		case HostComponent:
+			return updateFiberProps(fiber.stateNode, fiber.memoizedProps);
 		default:
 			if (__DEV__) {
 				console.warn('未实现的Update类型', fiber);

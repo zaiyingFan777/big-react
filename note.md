@@ -506,3 +506,7 @@ commit阶段（1.调度副作用、2.收集回调）
 		⬇
 执行副作用
 ```
+
+## 13. 关于 useEffect 中的 deps 的浅比较
+
+比如 deps 中是一个简单类型数据，直接 Object.is 即可，如果 deps 中的数据是一个对象类型数据，mountState 的时候根据初始值去计算，然后赋值给 hook.memoizedState，如果 update 阶段这个对象没有更新，他是不会计算的因此 mount 时期的初始值对象会赋值给 Update 阶段 hook.memoizedState。因此指向的是同一个对象，Object.is 比较会返回 true。

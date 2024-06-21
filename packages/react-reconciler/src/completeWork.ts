@@ -2,7 +2,8 @@ import {
 	appendInitialChild,
 	Container,
 	createInstance,
-	createTextInstance
+	createTextInstance,
+	Instance
 } from 'hostConfig';
 import { FiberNode } from './fiber';
 import {
@@ -13,7 +14,6 @@ import {
 	HostText
 } from './workTags';
 import { NoFlags, Update } from './fiberFlags';
-import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 // completework标记更新
 function markUpdate(fiber: FiberNode) {
@@ -43,8 +43,10 @@ export const completeWork = (wip: FiberNode) => {
 				// 将合成事件保存在DOM中，2.更新属性时
 				// 1.props是否变化 {onClick: xx} => {onClick: xxx}
 				// 2.变了 Update flag
-				// 我们这里没有判断哪样属性变了，直接赋值
-				updateFiberProps(wip.stateNode, newProps);
+				// 我们这里没有判断哪样属性变了，直接赋值(我们这里打标记，因为不能在react-reconciler里面有react-dom的侵入[造成了react-reconciler与react-dom的相互引用，应该是react-dom引入react-reconciler将reconciler打到react-dom包里]，
+				// 所以把更新属性的操作放在commit中去做，然后commit调用hostConfig的方法)
+				// commitWork去处理commitUpdate的更新，commitUpdate属于react-dom中的hostConfig里的方法。这样操作属性的方法就收敛到react-dom中。
+				markUpdate(wip);
 			} else {
 				// mount
 				// 1.构建DOM
@@ -118,7 +120,7 @@ export const completeWork = (wip: FiberNode) => {
  * node为第二个A，因为node.silbling是null，并且node.return是wip，那么就退出循环
  * 深度优先，层级遍历（找兄弟）然后再往上归
  */
-function appendAllChildren(parent: Container, wip: FiberNode) {
+function appendAllChildren(parent: Container | Instance, wip: FiberNode) {
 	// 找到孩子节点
 	let node = wip.child;
 

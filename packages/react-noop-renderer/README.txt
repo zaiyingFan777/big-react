@@ -1,0 +1,3 @@
+dependencies和peerDependencies的区别？
+dependencies是当前模块的生产环境依赖，当开发者在项目中安装了当前模块，当前模块的生产环境也会被安装。
+peerDependencies虽然也是依赖，但是他不会随着当前模块的安装而被安装，因为他默认在开发者依赖中已经存在了。这样开发者的依赖包就会减轻很多重量。
