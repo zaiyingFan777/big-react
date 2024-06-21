@@ -36,7 +36,7 @@ let workInProgress: FiberNode | null = null;
 // 本次更新的lane是什么
 let wipRootRenderLane: Lane = NoLane;
 // 防止副作用被多次调度
-let rootDoesHasPassiveEffects: Boolean = false;
+let rootDoesHasPassiveEffects: boolean = false;
 
 // ReactDOM.createRoot(rootElement).render(<App/>)中的container与performSyncWorkOnRoot连接上
 // 在fiber中调度update
