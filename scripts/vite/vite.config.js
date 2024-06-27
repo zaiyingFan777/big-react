@@ -27,15 +27,15 @@ export default defineConfig({
         find: 'react-noop-renderer',
         replacement: resolvePkgPath('react-noop-renderer')
       },
-      // {
-      //   find: 'hostConfig',
-      //   replacement: path.resolve(resolvePkgPath('react-dom'), './src/hostConfig.ts')
-      // }
-      // 测试react-noop-renderer
       {
         find: 'hostConfig',
-        replacement: path.resolve(resolvePkgPath('react-noop-renderer'), './src/hostConfig.ts')
+        replacement: path.resolve(resolvePkgPath('react-dom'), './src/hostConfig.ts')
       }
+      // 测试react-noop-renderer
+      // {
+      //   find: 'hostConfig',
+      //   replacement: path.resolve(resolvePkgPath('react-noop-renderer'), './src/hostConfig.ts')
+      // }
     ]
   }
 })

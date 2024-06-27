@@ -13,6 +13,7 @@ import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig'; // tsconfig.json中配置了
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
+import { CallbackNode } from 'scheduler';
 
 // jsx 经过babel编译为 jsx() React.createElement()，之后调用jsx()或React.createElement()[这里面是我们实现的jsx]会生成 ReactElement
 // ReactElement => FiberNode => DOM
@@ -145,6 +146,12 @@ export class FiberRootNode {
 	pendingLanes: Lanes; // 所有未被消费的lane的集合
 	finishedLane: Lane; // 本次更新schedule选择出来要被消费的lane
 	pendingPassiveEffects: PendingPassiveEffects; // 收集的effect副作用的回调
+
+	// 当前正在被调度的任务
+	callbackNode: CallbackNode | null;
+	// 当前正在被调度的优先级
+	callbackPriority: Lane;
+
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
@@ -152,6 +159,10 @@ export class FiberRootNode {
 		this.finishedWork = null;
 		this.pendingLanes = NoLanes;
 		this.finishedLane = NoLane;
+
+		this.callbackNode = null;
+		this.callbackPriority = NoLane;
+
 		this.pendingPassiveEffects = {
 			unmount: [],
 			update: []

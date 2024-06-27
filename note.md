@@ -510,3 +510,141 @@ commit阶段（1.调度副作用、2.收集回调）
 ## 13. 关于 useEffect 中的 deps 的浅比较
 
 比如 deps 中是一个简单类型数据，直接 Object.is 即可，如果 deps 中的数据是一个对象类型数据，mountState 的时候根据初始值去计算，然后赋值给 hook.memoizedState，如果 update 阶段这个对象没有更新，他是不会计算的因此 mount 时期的初始值对象会赋值给 Update 阶段 hook.memoizedState。因此指向的是同一个对象，Object.is 比较会返回 true。
+
+## 14.实现并发更新
+
+1. 扩展优先级、可以根据「触发更新的上下文环境」赋予不同优先级
+2. 点击事件后（syntheticEvent 执行事件回调的时候）通过将不同类别的点击事件转为相对应的优先级，然后 unstable_runWithPriority(事件对应的优先级，() => {callback.call(null, se)})，这里 unstable_runWithPriority 会先保存当前系统优先级到 previousPriorityLevel 中，然后将事件对应的优先级保存到 currentPriorityLevel，执行 callback，执行完毕 callback，再将 currentPriorityLevel 恢复为 previousPriorityLevel。
+3. 执行回调函数中的 setState(结合 1，事件回调的 callback 会调用 setState，在 dispatch 中会获取当前上下文的优先级)、首屏渲染、useEffect 中需要获取 updateLane（运行流程在 react 时，使用的是 lane 模型，运行流程在 scheduler 时，使用的是优先级。）
+
+```ts
+// 取出当前触发条件下的lane
+// 我们在dispatchSetState知道是click还是useEffect触发的，因此根据触发的不同返回不同的优先级
+export function requestUpdateLane(): Lane {
+	// 从上下文环境中获取Scheduler优先级
+	const currentSchedulerPriority = unstable_getCurrentPriorityLevel();
+	// 获取当前优先级对应的lane
+	const lane = schedulerPriorityToLane(currentSchedulerPriority);
+
+	return lane;
+}
+function dispatchSetState<State>(
+	fiber: FiberNode,
+	updateQueue: UpdateQueue<State>,
+	action: Action<State>
+) {
+	// 取出当前触发条件下的lane
+	const lane = requestUpdateLane();
+	// 创建更新
+	const update = createUpdate<State>(action, lane);
+	enqueueUpdate(updateQueue, update);
+	scheduleUpdateOnFiber(fiber, lane);
+}
+```
+
+4.扩展调度阶段：主要是在同步更新（微任务调度）的基础上扩展并发更新（Scheduler 调度），主要包括
+
+- 将 Demo 中的调度策略移到项目中
+- render 阶段变为【可中断】
+
+5. 扩展 state 计算机制，扩展「根据 lane 对应 update 计算 state」的机制，主要包括：
+
+- 通过 update 计算 state 时可以跳过「优先级不够的 update」
+- 由于「高优先级任务打断低优先级任务」，同一个组件中「根据 update 计算 state」的流程可能会多次执行，所以需要保存 update
+
+6. 跳过 update 需要考虑的问题
+
+- 如何比较优先级是否足够？Lane 数值大小的直接比较不够灵活
+
+```ts
+// 计算update的时候，如何确保优先级足够，简单的比较数值大小太局限了
+export function isSubsetOfLanes(set: Lanes, subset: Lane) {
+	// lane 是否在lanes中，代表他的优先级足够，不在就说明优先级不够。
+	// 取交集，比如0b0100和0b0001，就没有交集，就说明优先级不够。
+	// var a = 0b0100
+	// var b = 0b0001
+	// (a & b) === b; => false
+	// 让a为：var a = 0b0011，这时候(a & b) === b; => true
+	return (set & subset) === subset;
+}
+```
+
+- 如何同时兼顾「update 的连续性」与「update 的优先级」？新增 baseState、baseQueue 字段(baseState 为每次 render 计算的初始值（拿他作为开头来计算的），memoizedState 为每次计算的最终值)：
+  - baseState 是本次更新参与计算的初始 state，memoizedState 是上次更新计算的最终 state
+  - 如果本次更新没有 update 被跳过，则下次更新开始时 baseState === memoizedState
+  - 如果本次更新有 update 被跳过，则本次更新计算出的 memoizedState 为「考虑优先级」情况下计算的结果，baseState 为「最后一个没被跳过的 update 计算后的结果」，下次更新开始时 baseState !== memoizedState
+  - 本次更新「被跳过的 update 及其后面的所有 update」都会被保存在 baseQueue 中参与下次 state 计算
+  - 本次更新「参与计算但保存在 baseQueue 中的 update」，优先级会降低到 NoLane(NoLane 与任何优先级取交集都是 NoLane，因此会继续参与后续的计算)
+
+```js
+// 只考虑连续性或优先级
+// u0
+{
+  action: num => num + 1,
+  lane: DefaultLane
+}
+// u1
+{
+  action: 3,
+  lane: SyncLane
+}
+// u2
+{
+  action: num => num + 10,
+  lane: DefaultLane
+}
+
+// state = 0; updateLane = DefaultLane
+// 只考虑优先级情况下的结果：11，SyncLane被跳过，因此是0 -> 1 -> 11
+// 只考虑连续性(不考虑优先级)情况下的结果：13，0 -> 1 -> 3 -> 13
+```
+
+```js
+// 兼顾连续性与优先级
+// u0
+{
+  action: num => num + 1,
+  lane: DefaultLane
+}
+// u1
+{
+  action: 3,
+  lane: SyncLane
+}
+// u2
+{
+  action: num => num + 10,
+  lane: DefaultLane
+}
+
+/*
+* 第一次render
+* baseState = 0; memoizedState = 0;
+* baseQueue = null; updateLane = DefaultLane;
+* 第一次render 第一次计算
+* baseState = 1; memoizedState = 1;
+* baseQueue = null;
+* 第一次render 第二次计算
+* baseState = 1; memoizedState = 1;
+* baseQueue = u1;
+* 第一次render 第三次计算
+* baseState = 1; memoizedState = 11;
+* baseQueue = u1 -> u2(NoLane);
+*/
+
+/*
+* 第二次render
+* baseState = 1; memoizedState = 11;
+* baseQueue = u1 -> u2(NoLane); updateLane = SyncLane
+* 第二次render 第一次计算
+* baseState = 3; memoizedState = 3;
+* 第二次render 第二次计算
+* baseState = 13; memoizedState = 13;
+*/
+```
+
+7. 保存 update 的问题(因为比如上例子中，第一次 render 完，第一次 update 结果需要保存到哪，然后不影响第二次拿第一次的结果作为第二次 render 的条件来使用)
+
+- 考虑将 update 保存在 current 中。只要不进入 commit 阶段，current 与 wip 不会互换，所以保存在 current 中，即使多次执行 render 阶段，只要不进入 commit 阶段，都能从 current 中恢复数据。
+
+## 15.TODO 目前实现的还是 renderLane、updateLane 为单个的 lane，如果扩展为 renderLanes、updateLanes，实现真正的并发更新。

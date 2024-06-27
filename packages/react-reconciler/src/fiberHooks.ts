@@ -6,6 +6,7 @@ import {
 	createUpdateQueue,
 	enqueueUpdate,
 	processUpdateQueue,
+	Update,
 	UpdateQueue
 } from './updateQueue';
 import { Action } from 'shared/ReactTypes';
@@ -31,6 +32,9 @@ interface Hook {
 	memoizedState: any;
 	updateQueue: unknown;
 	next: Hook | null;
+	// baseState、baseQueue为useState中所需要的字段
+	baseState: any;
+	baseQueue: Update<any> | null;
 }
 
 // effect数据结构，存在于fiber.memoizedState属性中的Hook.memoizedState中
@@ -240,23 +244,60 @@ function createFCUpdateQueue<State>() {
 	return updateQueue;
 }
 
+// 多次中断多次执行updateState函数，那么只要没commit我们之前render的update需要保存在current fiber hook的baseQueue中
 function updateState<State>(): [State, Dispatch<State>] {
 	// 找到当前useState对应的hook数据
 	const hook = updateWorkInProgressHook();
 
 	// 计算新state的逻辑
 	const queue = hook.updateQueue as UpdateQueue<State>;
+	// baseState 是本次更新参与计算的初始 state
+	const baseState = hook.baseState;
+
 	const pending = queue.shared.pending;
-	// 计算完状态需要把update置空
-	queue.shared.pending = null;
+	// currentHook
+	const current = currentHook as Hook;
+	// 我们会把render的update结果存放在current fiber的hook上
+	let baseQueue = current.baseQueue;
 
 	if (pending !== null) {
-		const { memoizedState } = processUpdateQueue(
-			hook.memoizedState,
-			pending,
-			renderLane
-		);
-		hook.memoizedState = memoizedState;
+		// 防止多次render 不同优先级下计算的update丢失因此需要保存，以供下次计算时使用
+		// pending、baseQueue update保存在current中
+		if (baseQueue !== null) {
+			// baseQueue b2->b0->b1->b2
+			// pendingQueue p2->p0->p1->p2
+			// b0
+			const baseFirst = baseQueue.next;
+			// p0
+			const pendingFirst = pending.next;
+
+			// 将baseQueue和pendingQueue连接起来
+			// b2->p0
+			baseQueue.next = pendingFirst;
+			// p2->b0
+			pending.next = baseFirst;
+			// p2->b0->b1->b2->p0->p1->p2
+		}
+		// 如果baseQueue为null，那说明首次render，那么将pending赋值给baseQueue
+		// 如果baseQueue不为Null，我们上面将baseQueue和pendingQueue连接起来的结果赋值给baseQueue
+		baseQueue = pending;
+		// 将生成的环状链表保存在current中
+		current.baseQueue = pending;
+		// 重置pendingQueue，如果是低优先级的被高优先级打断，我们低优先级的时候先将pending保存在了current.baseQueue中了，然后将queue.shared.pending置空（因为queue是使用的currentfiber的queue，那么current和wip的hook queue都会被清空，）
+		// 但是如果高优先级的任务进来了这时候queue又有值了，然后重新render这个函数组件，我们会从current.baseQueue中拿到basequeue，以及新进来的Pending组成新的链表(两次优先级action的链表)。并保存在current中，
+		// 这样才会有后续的processUpdateQueue中的第一次render、第二次render 同时兼顾优先级和连贯性。
+		queue.shared.pending = null;
+
+		if (baseQueue !== null) {
+			const {
+				memoizedState,
+				baseQueue: newBaseQueue,
+				baseState: newBaseState
+			} = processUpdateQueue(baseState, baseQueue, renderLane);
+			hook.memoizedState = memoizedState;
+			hook.baseState = newBaseState;
+			hook.baseQueue = newBaseQueue;
+		}
 	}
 
 	return [hook.memoizedState, queue.dispatch as Dispatch<State>];
@@ -303,7 +344,9 @@ function updateWorkInProgressHook(): Hook {
 	const newHook: Hook = {
 		memoizedState: currentHook.memoizedState,
 		next: null,
-		updateQueue: currentHook.updateQueue
+		updateQueue: currentHook.updateQueue,
+		baseQueue: currentHook.baseQueue,
+		baseState: currentHook.baseState
 	};
 
 	if (workInProgressHook === null) {
@@ -393,7 +436,9 @@ function mountWorkInProgressHook(): Hook {
 	const hook: Hook = {
 		memoizedState: null,
 		updateQueue: null,
-		next: null
+		next: null,
+		baseQueue: null,
+		baseState: null
 	};
 	if (workInProgressHook === null) {
 		// mount时，本fc的第一个hook

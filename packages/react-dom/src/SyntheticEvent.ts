@@ -1,5 +1,11 @@
 // react-dom事件系统
 import { Container } from 'hostConfig';
+import {
+	unstable_ImmediatePriority,
+	unstable_NormalPriority,
+	unstable_runWithPriority,
+	unstable_UserBlockingPriority
+} from 'scheduler';
 import { Props } from 'shared/ReactTypes';
 
 // 在dom的elementPropsKey属性上保存rectElement props
@@ -92,8 +98,13 @@ function dispatchEvent(container: Container, eventType: string, e: Event) {
 function triggerEventFlow(paths: EventCallback[], se: SyntheticEvent) {
 	for (let i = 0; i < paths.length; i++) {
 		const callback = paths[i];
-		// call apply立即执行、bind生成一个函数不会立即执行
-		callback.call(null, se);
+
+		// 给事件赋予不同的优先级，并执行callback
+		// unstable_runWithPriority中会将优先级(eventTypeToSchedulerPriority(se.type))赋予当前的优先级(currentPriorityLevel)变量，然后执行callback回调，执行完回调，会把当前的优先级恢复为之前的优先级
+		unstable_runWithPriority(eventTypeToSchedulerPriority(se.type), () => {
+			// call apply立即执行、bind生成一个函数不会立即执行
+			callback.call(null, se);
+		});
 
 		if (se.__stopPropagation) {
 			// 阻止事件传播
@@ -156,4 +167,18 @@ function collectPaths(
 		targetElement = targetElement.parentNode as DOMElement;
 	}
 	return paths;
+}
+
+// 根据事件类型，转换相对应的优先级
+function eventTypeToSchedulerPriority(eventType: string) {
+	switch (eventType) {
+		case 'click':
+		case 'keydown':
+		case 'keyup':
+			return unstable_ImmediatePriority;
+		case 'scroll':
+			return unstable_UserBlockingPriority;
+		default:
+			return unstable_NormalPriority;
+	}
 }
