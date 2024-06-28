@@ -6,17 +6,19 @@ import {
 	unstable_UserBlockingPriority
 } from 'scheduler';
 import { FiberRootNode } from './fiber';
+import ReactCurrentBatchConfig from 'react/src/currentBatchConfig';
 
 export type Lane = number;
 export type Lanes = number;
 
 // React并发更新会选出一批优先级，批量更新(暂时选出一个优先级)
-export const NoLane = 0b0000;
-export const NoLanes = 0b0000;
-export const SyncLane = 0b0001; // 同步优先级
-export const InputContinuousLane = 0b0010; // 连续的输入
-export const DefaultLane = 0b0100; // 默认优先级
-export const IdleLane = 0b1000; // 空闲优先级
+export const NoLane = 0b00000;
+export const NoLanes = 0b00000;
+export const SyncLane = 0b00001; // 同步优先级
+export const InputContinuousLane = 0b00010; // 连续的输入
+export const DefaultLane = 0b00100; // 默认优先级
+export const TransitionLane = 0b01000; // transition lane
+export const IdleLane = 0b10000; // 空闲优先级
 
 // 返回两个优先级的集合
 // 0b0000 | 0b0001 => 0b0001
@@ -27,6 +29,12 @@ export function mergeLanes(laneA: Lane, laneB: Lane): Lanes {
 // 取出当前触发条件下的lane
 // 我们在dispatchSetState知道是click还是useEffect触发的，因此根据触发的不同返回不同的优先级
 export function requestUpdateLane(): Lane {
+	// 判断transition的逻辑
+	const isTransition = ReactCurrentBatchConfig.transition !== null;
+	if (isTransition) {
+		return TransitionLane;
+	}
+
 	// 从上下文环境中获取Scheduler优先级
 	const currentSchedulerPriority = unstable_getCurrentPriorityLevel();
 	// 获取当前优先级对应的lane

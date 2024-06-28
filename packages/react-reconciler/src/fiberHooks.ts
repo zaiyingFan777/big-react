@@ -1,6 +1,7 @@
 import internals from 'shared/internals';
 import { FiberNode } from './fiber';
 import { Dispatch, Dispatcher } from 'react/src/currentDispatcher';
+import currentBatchConfig from 'react/src/currentBatchConfig';
 import {
 	createUpdate,
 	createUpdateQueue,
@@ -27,7 +28,8 @@ let currentHook: Hook | null = null;
 let renderLane: Lane = NoLane;
 
 // fc component fiber.memoizedState -> (useState -> useEffect)的链表
-// 每个hook(useState)中的类型为Hook类型里面又有memoizedState字段，Hook保存的是useState或useEffect自身的值，
+// 每个hook(useState)中的类型为Hook类型里面又有memoizedState字段，Hook保存的是useState或useEffect(effect)自身的值，
+// 对于useTransition来说，memoizedState存储的是startTransition函数。
 interface Hook {
 	memoizedState: any;
 	updateQueue: unknown;
@@ -97,12 +99,14 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 // mount阶段hooks实现的集合
 const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
-	useEffect: mountEffect
+	useEffect: mountEffect,
+	useTransition: mountTransition
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
-	useEffect: updateEffect
+	useEffect: updateEffect,
+	useTransition: updateTransition
 };
 
 function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
@@ -260,6 +264,7 @@ function updateState<State>(): [State, Dispatch<State>] {
 	// 我们会把render的update结果存放在current fiber的hook上
 	let baseQueue = current.baseQueue;
 
+	// 拼接baseQueue
 	if (pending !== null) {
 		// 防止多次render 不同优先级下计算的update丢失因此需要保存，以供下次计算时使用
 		// pending、baseQueue update保存在current中
@@ -283,21 +288,24 @@ function updateState<State>(): [State, Dispatch<State>] {
 		baseQueue = pending;
 		// 将生成的环状链表保存在current中
 		current.baseQueue = pending;
+		// 这里可能会用到note.md中的15.1
 		// 重置pendingQueue，如果是低优先级的被高优先级打断，我们低优先级的时候先将pending保存在了current.baseQueue中了，然后将queue.shared.pending置空（因为queue是使用的currentfiber的queue，那么current和wip的hook queue都会被清空，）
 		// 但是如果高优先级的任务进来了这时候queue又有值了，然后重新render这个函数组件，我们会从current.baseQueue中拿到basequeue，以及新进来的Pending组成新的链表(两次优先级action的链表)。并保存在current中，
 		// 这样才会有后续的processUpdateQueue中的第一次render、第二次render 同时兼顾优先级和连贯性。
+		// ???看后续是否讲到，hook.baseQueue = newBaseQueue;说明可能是为了后续某些情况，比如高优先级的一批处理完了，低优先级的某一批没有被处理，但是结果需要兼顾连续性和优先级，因此需要接着上面的处理结果再去处理。
+		// 因此下面中hook(wip)上存了baseQueue。然后wip变成了current，然后再计算的时候从current.baseQueue取出来，然后使用baseState作为新计算的初始值来计算。
 		queue.shared.pending = null;
+	}
 
-		if (baseQueue !== null) {
-			const {
-				memoizedState,
-				baseQueue: newBaseQueue,
-				baseState: newBaseState
-			} = processUpdateQueue(baseState, baseQueue, renderLane);
-			hook.memoizedState = memoizedState;
-			hook.baseState = newBaseState;
-			hook.baseQueue = newBaseQueue;
-		}
+	if (baseQueue !== null) {
+		const {
+			memoizedState,
+			baseQueue: newBaseQueue,
+			baseState: newBaseState
+		} = processUpdateQueue(baseState, baseQueue, renderLane);
+		hook.memoizedState = memoizedState;
+		hook.baseState = newBaseState;
+		hook.baseQueue = newBaseQueue;
 	}
 
 	return [hook.memoizedState, queue.dispatch as Dispatch<State>];
@@ -397,6 +405,8 @@ function mountState<State>(
 	const queue = createUpdateQueue<State>();
 	hook.updateQueue = queue;
 	hook.memoizedState = memoizedState;
+	// 因为所有的计算都是根据baseState开始的，memoizedState存储的计算后的状态
+	hook.baseState = memoizedState;
 
 	// function App() {
 	// 	const [x, setX] = useState(1);
@@ -415,6 +425,47 @@ function mountState<State>(
 	const dispatch = dispatchSetState.bind(null, currentlyRenderingFiber, queue);
 	queue.dispatch = dispatch;
 	return [memoizedState, dispatch];
+}
+
+// const [isPending, startTransition] = useTransition();
+// startTransition(() => {
+// 	update(xxx) // 这里的更新是transitionLane
+// })
+// mount时期的useTransition  具体解释见note.md中的##17
+// 返回的第一个参数：是否在过渡过程中，第二个参数：startTransition
+function mountTransition(): [boolean, (callback: () => void) => void] {
+	// 第一个hook useState
+	const [isPending, setPending] = mountState(false);
+	// 第二个hook
+	const hook = mountWorkInProgressHook();
+	const start = startTransition.bind(null, setPending);
+	hook.memoizedState = start;
+	return [isPending, start];
+}
+
+// update时期的useTransition
+function updateTransition(): [boolean, (callback: () => void) => void] {
+	const [isPending] = updateState();
+	const hook = updateWorkInProgressHook();
+	const start = hook.memoizedState;
+	return [isPending as boolean, start];
+}
+// callback为开发者传进来的回调函数
+function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
+	// 第一次改变优先级为同步优先级
+	setPending(true);
+	// 第二次改变优先级到transitionLane
+	// 先保存当前的transition，（从共享层中拿到）
+	const preTransition = currentBatchConfig.transition;
+	// 修改值为1，说明我们进入了transition
+	currentBatchConfig.transition = 1;
+
+	// 都是在transitionlane下调用，这里callback的setState的dispatch会获取优先级，然后我们的requestUpdateLane会做transition的判断，如果是transition会返回transitionLane
+	callback();
+	setPending(false);
+
+	// 第三次改变优先级，还原优先级
+	currentBatchConfig.transition = preTransition;
 }
 
 // dispatch方法  从当前触发更新的fiebrNode调度更新(从当前fiebr找到fiberRootNode)

@@ -39,7 +39,7 @@ let workInProgress: FiberNode | null = null;
 // 本次更新的lane是什么
 let wipRootRenderLane: Lane = NoLane;
 // 防止副作用被多次调度
-let rootDoesHasPassiveEffects: boolean = false;
+let rootDoesHasPassiveEffects = false;
 
 type RootExitStatus = number;
 const RootInComplete: RootExitStatus = 1;
@@ -99,12 +99,16 @@ function ensureRootIsScheduled(root: FiberRootNode) {
 	// 新的调度任务
 	let newCallbackNode = null;
 
+	if (__DEV__) {
+		console.log(
+			`在${updateLane === SyncLane ? '微' : '宏'}任务中调度，优先级：`,
+			updateLane
+		);
+	}
+
 	if (updateLane === SyncLane) {
 		// 同步优先级是没有新的调度任务的
 		// 同步优先级，用微任务调度
-		if (__DEV__) {
-			console.log('在微任务中调度，优先级：', updateLane);
-		}
 		// 将performSyncWorkOnRoot塞入到微任务队列中
 		// 每次更新会执行scheduleUpdateOnFiber -> ensureRootIsScheduled -> performSyncWorkOnRoot放入微任务队列 -> scheduleMicroTask再去清空微任务队列
 		// 但是：scheduleMicroTask调度flushSyncCallbacks的时候，我们定义了全局变量isFlushingSyncQueue为false，当开始调度的时候变为true，这时候后面两次任务进队列，然后总共执行三次render(但是我们的策略不会让他执行三次，见下面解释)，都是在同一次微任务中

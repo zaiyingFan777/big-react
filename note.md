@@ -92,7 +92,7 @@ setNum(200);
 ```
 
 1. 第一次 mount 完毕后 fiberRootNode.current 指向 mount 后的 hostRootFiber fiberRootNode.current.alternate 指向 mount 前的 hostRootFiber(他的 child 为 null)
-2. 第一次 update，根据 mount 后的 hostRootFiber，创建 wip，因为 fiberRootNode.current.alternate 存在，我们直接复用，然后将 current.child 赋值给 wip.child(他俩本身就通过 alternate 相互连接了)，但是 current 或者 wip 的 child、child.child 他们的 alternate 都是 null，因此我们在 beginWork(hostRootFiber[wip])的时候，创建 App 的 fiberNode 的时候需要 useFiber 根据 current（App）重新创建 wip fiberNode(因为 current.alternate 为 null，重新创建，虽然 wip hostRootFiber.child 是存在的,但是 cur app 与 wip app 是没有 alternate 连接的，因此根据 current 新建了一个 wip app 并于 curr 关联，并将新建的与 wip hostRootFiber 相关联)，这时候 app wip fibernode 就是新创建好的，然后跟 current app 保持好连接，出来后又跟 hostRootFiber wip 做好了连接，同理，第一次 update 的 fiberNode 都是根据 current fiber 构建的，并做好链接
+2. 第一次 update，根据 mount 后的 hostRootFiber，创建 wip，因为 fiberRootNode.current.alternate 存在，我们直接复用，然后将 current.child 赋值给 wip.child(他俩本身就通过 alternate 相互连接了)，但是 current 或者 wip 的 child、child.child 他们的 alternate 都是 null，因此我们在 beginWork(hostRootFiber[wip])的时候，创建 App 的 fiberNode 的时候需要 useFiber 根据 current（App）重新创建 wip fiberNode(因为 current.alternate 为 null，重新创建，虽然 wip hostRootFiber.child 是存在的，但是 cur app 与 wip app 是没有 alternate 连接的，因此根据 current 新建了一个 wip app 并于 cur 关联，并将新建的 wip app 与 wip hostRootFiber 相关联)，这时候 app wip fibernode 就是新创建好的，然后跟 current app 保持好连接，出来后又跟 hostRootFiber wip 做好了连接，同理，第一次 update 的 fiberNode 都是根据 current fiber 构建的，并做好链接
    > - 2.1 这里我思考的是由有个误区: 就是第一次 update hostRootFiber 是 mount 时候创建的，他的子节点是 null，然后第一次 update 的时候，创建 workInProgress 的时候是根据这个服用的，然后 wip.child 指向 current.child，这时候他俩指向的同一个对象，current app fibernode，然后我们 beginwork wip hostfibernode 的时候，因为 current app fibernode 的 alternate 是 null，所以创建一个新的，然后跟 current app 相互连接，但是 wip hostfibernode 指向的也是这个 current app，因为他是 current hostfibernode,child 赋值给了 wip hostfibernode ，我当时就很蒙为啥这会还没把刚才生成的 app wip 跟现在的 wip hostfibernode 连接，为啥 wip app 的 alternate 指向新建的，因为 current hostfibernode 指向的 current app 与 wip hostfibernode 指向的 wip app 是同一个。然后接着就是把新建的 wip app 与 wip hostfibernode 相连接。
 3. 第二次 update，这时候 root.current 指向上次我们构建的 wip。然后创建 wip，复用，并把 current hostrootfiber.child 赋值给 wip hostrootfiber.child。然后进行 hostrootfiber 的 beginwork，利用复用 current app.alternate 生成 wip app alternate 然后 current app .child 赋值给 wip app.child，然后并跟 wip hostrootfiber 相互连接，紧接着相下执行类似过程，确实复用了 current hostfibernode.alternate
 
@@ -647,4 +647,122 @@ export function isSubsetOfLanes(set: Lanes, subset: Lane) {
 
 - 考虑将 update 保存在 current 中。只要不进入 commit 阶段，current 与 wip 不会互换，所以保存在 current 中，即使多次执行 render 阶段，只要不进入 commit 阶段，都能从 current 中恢复数据。
 
-## 15.TODO 目前实现的还是 renderLane、updateLane 为单个的 lane，如果扩展为 renderLanes、updateLanes，实现真正的并发更新。
+## 15.TODO!!! 目前实现的还是 renderLane、updateLane 为单个的 lane，如果扩展为 renderLanes、updateLanes，实现真正的并发更新。updateState 中的注释
+
+1. 15.1 只有 Mount 的时候 dispatch 与 fiber 绑定，update 流程的 dispatch 并没有绑定 fiber，这点需要确定? 答案：因为新建或者复用 fibernode 时，会将 wip.memoizedState = current.memoizedState; 这时候函数组件的 hooks 链表是共用的一套，因此无论 dispatch 绑定到哪个 fiber 上，他们的 hook.updateQueue 是共用的一个对象，创建的更新进入队列，这样 cur 与 wip hook.updateQueue 的 shared.pending 保存的 update 链表都会更新。因此 cur 可能没有跟 dispatch bind，但是新的更新都会进入 cur fiber hook.updateQueue.shared.pending 中。然后计算的时候会根据 cur 状态和 updateQueue 中的 action 来进行计算赋值给 wip，然后 wip 又变成了新的 cur(状态就是根据上次 cur 和 action 计算出来的)
+
+```
+var a = {
+	updateQueue: {
+		shared: {
+			pending: {
+				action: 1
+			}
+		}
+	}
+}
+var b = {
+	updateQueue: a.updateQueue
+}
+// a b 共享一个 updateQueue
+// 让b.updateQueue.shared.pending = null
+// a的updateQueue.shared.pending也是Null
+// 新增b的updateQueue.shared.pending = {action: 2}
+// a.updateQueue.shared.pending = {action: 2}【跟上面的同理】
+```
+
+## 16.默认为同步更新(mount 时)，useTransition(启用并发特性后的那次更新启用并发更新)的作用
+
+1. 执行过渡效果时（假设从 UI a 过渡到 UI b），通常处理逻辑包括 3 个状态：
+
+- 初始情况是 UI a
+- 开启过渡后，显示过渡中（比如 loading）效果
+- 过渡完成后切换到 UI b
+
+2. 传统「过渡中」效果的弊端：
+
+- 时间比较短时，「过渡中效果」可能比较生硬
+- 「加载过程阻塞 UI」也会带来不好的 UX
+
+3. useTransition 就是为了解决这个问题，他的作用是：切换 UI 时，先显示旧的 UI，待新的 UI 加载完成后再显示新的 UI。
+4. 因为同步任务(js 执行时间比较长)会阻碍渲染进程执行导致掉帧，开启并发更新就会在空闲时间去做更新(render)，除非有特别耗时的组件 render，基本都是在空闲时间去 render，因此不会阻碍渲染进程执行，也就是不会掉帧。
+
+## 17.实现 useTransition
+
+useTransition 的作用翻译成源码术语：
+
+- 切换 UI -> 触发更新
+- 先显示旧的 UI，待新的 UI 加载完成后再显示新的 UI -> 「切换新 UI」对应低优先级更新(先执行高优先级的更新，然后并发更新不会阻塞 UI，说明优先级比较低)
+
+实现的要点：
+
+1. 实现基础 hook 工作流程
+2. 实现 Transition 优先级
+3. useTransition 的实现细节
+
+![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/lfaisbol0osc.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题')
+
+```ts
+const [isPending, startTransition] = useTransition();
+startTransition(() => {
+	update(xxx); // 这里的更新是transitionLane
+});
+
+// function mountTransition(): [boolean, (callback: () => void) => void] {}
+```
+
+图例解释：
+
+1. 左边的 useTransition，内部包含两个 hook：
+   - 第一个 hook 为 useState，对应的是 isPending 的状态。
+   - 第二个 hook 保存的是 mountTransition 函数返回的第二个参数中 callback 回调，也就是用户传入的() => {update(xxx); // 这里的更新是 transitionLane}
+2. useTransition 中的逻辑主要存在 右边图的 startTransition 中：
+   - 右图中的 callback 是 startTransition 中传入的 callback。
+   - startTransition 会触发三次更新，1.首先触发 setPending(true)[同步优先级]，isPending 就会返回 true。2.接下来会改变优先级为 TransitionLane，再还原优先级前我们会以 TransitionLane 优先级触发 callback 回调、setPending(false)，这两者（callback、setPending(false)）会在同一优先级中执行。3.还原优先级
+   - 因此 callback 回调中的 setState 为 TransitionLane
+   - 虽然在 startTransition 中触发了三次更新但是 setPending(true)的优先级大于 callback()、setPending(false)的优先级，所以会先执行 setPending(true)，commit 完了之后才会执行接下来的更新，所以 callback、setPending(false)才会是并发更新。
+
+```
+const [isPending, startTransition] = useTransition();
+const [tab, setTab] = useState('about');
+console.log('hello');
+function selectTab(nextTab) {
+	startTransition(() => {
+		setTab(nextTab);
+	});
+}
+// callback为开发者传进来的回调函数
+function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
+	// 第一次改变优先级为同步优先级
+	setPending(true);
+	// 第二次改变优先级到transitionLane
+	// 先保存当前的transition，（从共享层中拿到）
+	const preTransition = currentBatchConfig.transition;
+	// 修改值为1，说明我们进入了transition
+	currentBatchConfig.transition = 1;
+
+	// 都是在transitionlane下调用，这里callback的setState的dispatch会获取优先级，然后我们的requestUpdateLane会做transition的判断，如果是transition会返回transitionLane
+	callback();
+	setPending(false);
+
+	// 第三次改变优先级，还原优先级
+	currentBatchConfig.transition = preTransition;
+}
+// 上面点击事件执行后，进入startTransition，先执行setPending(true);发起一次微任务调度（同步更新，action: true进入hook的updateQueue），然后代码紧接着会同步执行const preTransition = currentBatchConfig.transition;
+// preTransition => null，设置currentBatchConfig.transition = 1;，进入transitionLane。
+// 执行callback()，也就是() => {setTab(nextTab)};，执行setTab('contact')，这时候进入dispatch，lane为8，update为{action: "contact", lane: 8, next: null}并进入相对应的Hook的updateQueue。紧接着发起一起宏任务调度（lane为8）,此时root.pendingLanes: 9, callbackPriority: 1，进入 ensureRootIsScheduled(root);但是这时候最高优先级依然为1，return 出来，这里可以看出，setState都是异步，先把update推入到hook.updateQueue，以及给root的pendingLanes增加要更新的Lane，其他的操作也没有。
+// 紧接着执行setPending(false);依然是触发dispatch，优先级为8，update为{action: false, lane: 8, next: null}，进入hook.updateQueue，这时候setPending的hook.updateQueue的为{lane: 8, action: false, next: {lane: 1, action: true, next: {...} }}的环状链表，紧接着产生调度，将优先级8合并到root.pendingLanes中（依然为9）
+紧接着调度进入 ensureRootIsScheduled(root)，但是这时候最高优先级依然为1，return 出来,同上只是update进入了updateQueue。
+// currentBatchConfig.transition = preTransition; 恢复优先级。
+// 这时候同步代码执行完毕，开始执行setPending(true);发起的微任务调度。
+// ============微任务调度=====================
+// 进入app函数，这里省略useTransition的过程(计算得到Pending为true,pending为上述的环状链表两个update一个为1 true，一个为8 false, baseQueue为null，计算完毕后，hook.updateQueue为null,baseQueue为{action: false, lane: 8}[因为lane为1，action为true的先执行，没有跳过那一说，只剩下Lane为8，action为false的]，baseState，memoryState都为true,)，进入useState('about')，他的queue: {action: 'contact', lane: 8}的环状链表，由于优先级不足，无法计算，因此跳过，hook.baseQueue为 {action: 'contact', lane: 8} 这时候Hook的baseState和memoryState都是about，所以返回about，同时清空了hook的updatQueue，但是有baseQueue。
+// lane为1的微任务完毕后，进入commit(root)阶段。移除root.pendingLanes上的1，从9变为了8。
+// 执行完commit(root)后在commit末尾继续执行ensureRootIsScheduled(root);开启lane为8的并发更新，
+// ===============并发更新=======================
+// const [isPending, startTransition] = useTransition();
+// 上面update流程中，进入到useTransition，hook.baseState、hook.memoizedState为true，baseQueue为{action: false, lane: 8}的环状链表, updateQueue为null，pendingQueue为null，但是baseQueue不为null，开始计算因为本次优先级为8，计算完后hook.baseState、hook.memoizedState为false，baseQueue变味了null，updateQueue也为null。
+// const [tab, setTab] = useState("about");
+// baseQueue为{action: "contact", lane: 8}，baseState以及memoizedState为"about"，pending为null，计算过程同上，计算出来hook.baseState、hook.memoizedState为"contact"，baseQueue为null，
+// ...进入commitRoot阶段移除本次更新8 root.pendingLanes = 0,以及diff出来的结果重新渲染。最后再进入ensureRootIsScheduled 取出来的最高优先级为0。
+```

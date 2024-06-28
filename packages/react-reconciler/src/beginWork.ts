@@ -170,6 +170,37 @@ function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
 	// 当我们拿到App函数然后在renderWithHooks里面执行，因为仍然是jsx编译好的React.creatElement('div'...)，所以会执行我们在react包里写好的React.creatElement方法
 	// 并把这些参数传递进去，得到children(ReactElement),,如果里面reactElement还有子组件到时候仍然需要先执行函数再执行jsx()得到ReactElement
 	// fiber.type 组件函数本身
+	// ============================
+	// props: click!!!!
+	// function App(){
+	// 	const onC = () => {console.log(111)}
+	// 	return <Child onClick={onC}/>;
+	// }
+
+	// function Child({onClick}) {
+	// 	return (
+	// 		<div onClick={onClick}>111</div>
+	// 	);
+	// }
+	// 编译完
+	// import { jsx as _jsx } from "react/jsx-runtime";
+	// function App() {
+	// 	const onC = () => {
+	// 		console.log(111);
+	// 	};
+	// 	return /*#__PURE__*/_jsx(Child, {
+	// 		onClick: onC
+	// 	});
+	// }
+	// function Child({
+	// 	onClick
+	// }) {
+	// 	return /*#__PURE__*/_jsx("div", {
+	// 		onClick: onClick, // 这里会被赋值给dom的onClick
+	// 		children: "111"
+	// 	});
+	// }
+	// ============================
 	const nextChildren = renderWithHooks(wip, renderLane);
 	reconcileChildren(wip, nextChildren);
 	return wip.child;

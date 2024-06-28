@@ -10,6 +10,10 @@ import {
 import { ReactElementType } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { requestUpdateLane } from './fiberLanes';
+import {
+	unstable_ImmediatePriority,
+	unstable_runWithPriority
+} from 'scheduler';
 
 /**
  *
@@ -36,17 +40,21 @@ export function updateContainer(
 	element: ReactElementType | null,
 	root: FiberRootNode
 ) {
-	// 获取hostRootFiber
-	const hostRootFiber = root.current;
-	// 取出当前触发条件下的lane
-	const lane = requestUpdateLane();
-	// 首屏渲染触发更新
-	const update = createUpdate<ReactElementType | null>(element, lane);
-	// 将update插入hostRootFiber的updateQueue中
-	enqueueUpdate(
-		hostRootFiber.updateQueue as UpdateQueue<ReactElementType | null>,
-		update
-	);
-	scheduleUpdateOnFiber(hostRootFiber, lane);
+	// 默认为同步更新，使用并发特性后的那次更新才启用并发更新，因此mount时更新的优先级为同步更新优先级。
+	unstable_runWithPriority(unstable_ImmediatePriority, () => {
+		// 获取hostRootFiber
+		const hostRootFiber = root.current;
+		// 取出当前触发条件下的lane(同步优先级)
+		const lane = requestUpdateLane();
+		// 首屏渲染触发更新
+		const update = createUpdate<ReactElementType | null>(element, lane);
+		// 将update插入hostRootFiber的updateQueue中
+		enqueueUpdate(
+			hostRootFiber.updateQueue as UpdateQueue<ReactElementType | null>,
+			update
+		);
+		scheduleUpdateOnFiber(hostRootFiber, lane);
+	});
+
 	return element;
 }
