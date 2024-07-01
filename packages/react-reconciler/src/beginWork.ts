@@ -25,6 +25,7 @@ import {
 import { mountChildFibers, reconcileChildFibers } from './childFibers';
 import { renderWithHooks } from './fiberHooks';
 import { Lane } from './fiberLanes';
+import { Ref } from './fiberFlags';
 
 // 递归中的递阶段，renderLane本次更新的lane
 export const beginWork = (wip: FiberNode, renderLane: Lane) => {
@@ -115,6 +116,8 @@ function updateHostComponent(wip: FiberNode) {
 	// }
 	const nextProps = wip.pendingProps;
 	const nextChildren = nextProps.children;
+	// 标记ref
+	markRef(wip.alternate, wip);
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }
@@ -232,5 +235,19 @@ function reconcileChildren(wip: FiberNode, children?: ReactElementType) {
 		// 首屏渲染 性能优化，构建一个离屏dom树对根节点执行一次Placement，而不是每个dom都标记Placement
 		// 首屏渲染：除了hostRootFiber，其他fiber走这里，避免每个fiber都标记Placement
 		wip.child = mountChildFibers(wip, null, children);
+	}
+}
+
+// 标记ref
+function markRef(current: FiberNode | null, wip: FiberNode) {
+	const ref = wip.ref;
+
+	if (
+		(current === null && ref !== null) ||
+		(current !== null && current.ref !== ref)
+	) {
+		// mount时只要存在ref就标记
+		// update时 ref引用变化
+		wip.flags |= Ref;
 	}
 }

@@ -4,6 +4,7 @@ import {
 	commitHookEffectListCreate,
 	commitHookEffectListDestroy,
 	commitHookEffectListUnmount,
+	commitLayoutEffects,
 	commitMutationEffects
 } from './commitWork';
 import { completeWork } from './completeWork';
@@ -463,7 +464,8 @@ function commitRoot(root: FiberRootNode) {
 		// fiber树切换在mutation和layout之间
 		root.current = finishedWork;
 
-		// layout阶段
+		// layout阶段，执行layout阶段的时候，wip fiber已经变为了current fiber
+		commitLayoutEffects(finishedWork, root);
 	} else {
 		// 没有更新也需要执行树切换的操作
 		root.current = finishedWork;

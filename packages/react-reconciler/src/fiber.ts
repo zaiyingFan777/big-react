@@ -202,13 +202,14 @@ export const createWorkInProgress = (
 	wip.child = current.child;
 	wip.memoizedProps = current.memoizedProps;
 	wip.memoizedState = current.memoizedState;
+	wip.ref = current.ref;
 
 	return wip;
 };
 
 // 根据ReactElement创建fiberNode
 export function createFiberFromElement(element: ReactElementType) {
-	const { type, key, props } = element; // ReactElement: 这里的props其实就是element的子element
+	const { type, key, props, ref } = element; // ReactElement: 这里的props其实就是element的子element
 	let fiberTag: WorkTag = FunctionComponent;
 
 	if (typeof type === 'string') {
@@ -220,6 +221,7 @@ export function createFiberFromElement(element: ReactElementType) {
 	}
 	const fiber = new FiberNode(fiberTag, props, key);
 	fiber.type = type;
+	fiber.ref = ref;
 	return fiber;
 }
 

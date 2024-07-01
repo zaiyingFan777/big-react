@@ -30,6 +30,7 @@ let renderLane: Lane = NoLane;
 // fc component fiber.memoizedState -> (useState -> useEffect)的链表
 // 每个hook(useState)中的类型为Hook类型里面又有memoizedState字段，Hook保存的是useState或useEffect(effect)自身的值，
 // 对于useTransition来说，memoizedState存储的是startTransition函数。
+// 对于useRef来说，memoizedState存储的是ref数据结构
 interface Hook {
 	memoizedState: any;
 	updateQueue: unknown;
@@ -100,13 +101,15 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
 	useEffect: mountEffect,
-	useTransition: mountTransition
+	useTransition: mountTransition,
+	useRef: mountRef
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
 	useEffect: updateEffect,
-	useTransition: updateTransition
+	useTransition: updateTransition,
+	useRef: updateRef
 };
 
 function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
@@ -289,12 +292,27 @@ function updateState<State>(): [State, Dispatch<State>] {
 		// 将生成的环状链表保存在current中
 		current.baseQueue = pending;
 		// 这里可能会用到note.md中的15.1
-		// 重置pendingQueue，如果是低优先级的被高优先级打断，我们低优先级的时候先将pending保存在了current.baseQueue中了，然后将queue.shared.pending置空（因为queue是使用的currentfiber的queue，那么current和wip的hook queue都会被清空，）
+		// 如果是低优先级的被高优先级打断，我们低优先级的时候先将pending保存在了current.baseQueue中了(无论计算不计算都会保留完整的updateQueue，并且baseState我们没存，因此只要低优先级被打断，都会重新计算)，然后将queue.shared.pending置空（因为queue是使用的currentfiber的queue，那么current和wip的hook queue都会被清空，）
 		// 但是如果高优先级的任务进来了这时候queue又有值了，然后重新render这个函数组件，我们会从current.baseQueue中拿到basequeue，以及新进来的Pending组成新的链表(两次优先级action的链表)。并保存在current中，
 		// 这样才会有后续的processUpdateQueue中的第一次render、第二次render 同时兼顾优先级和连贯性。
-		// ???看后续是否讲到，hook.baseQueue = newBaseQueue;说明可能是为了后续某些情况，比如高优先级的一批处理完了，低优先级的某一批没有被处理，但是结果需要兼顾连续性和优先级，因此需要接着上面的处理结果再去处理。
+		// hook.baseQueue = newBaseQueue;说明可能是为了后续某些情况，比如高优先级的一批处理完了(commitRoot了)，低优先级的某一批没有被处理，但是结果需要兼顾连续性和优先级，因此需要接着上面的处理结果再去处理。
 		// 因此下面中hook(wip)上存了baseQueue。然后wip变成了current，然后再计算的时候从current.baseQueue取出来，然后使用baseState作为新计算的初始值来计算。
-		queue.shared.pending = null;
+		// 1.先发起同步优先级再发起低优先级，然后同一个hook先有高，再有低的链表，执行完高的，低的被跳过，依然将低的保存在新的hook上的basequeue，pending为空，等commit完成之后再重新调度低优先级，拿出啦hook的basequeue，
+		// 2.如果是先发起低优先级再发起同步优先级，hook先进来低优先级的update开始render，然后这个hook又进来了高优先级的update，那么低优先级的render 完事后记录到current.basequeue因为没有执行fiber的切换，然后因为render低的没完就被打断了，进行高优先级，然后根据pending和basequeue重新计算，计算完记录到basequeue，进入到commit，然后再重新调度低优先级是根据basequeue
+		// 并发更新，只要没有更高的打断他也会把这个lane更新完进入commit然后再重新进入调度更低的更新。
+		// 3.如果低优先级正在执行，会将低优先级的pending赋值给baseQueue,因为baseQueue为Null，然后将baseQueue赋值给current.baseQueue，这时候低优先级render完了，但是还没有进入commit阶段，
+		// 高优先级来了还是这个Hook，那么这个hook.pending来了高优先级的update，那么会拼接链表，将拼接好的链表赋值给current.baseQueue，然后baseState依然是最初的baseState【因为低优先级的计算完状态baseState存到了wip hook，但是不影响，我们从最初组件的状态开始计算，无非就是update链表的拼接，baseState是Hook最初的state，baseQueue是低优先级的Update和新的高优先级Update拼接好d的新链表，重构新计算高优先级，虽然低优先级的计算过了但是
+		// baseState是hook最初的因为低优先级的计算了但是我们没有保存到cur，只是保存到了wip hook，没事相当于重新计算一边呗。计算完高优先级，commit，再计算低优先级。】，
+		// 因为低优先级render完的计算结果存到了wip hook，
+		// 但其实是不影响，因为baseState是最初的状态，baseQueue是拼接好的低、高优先级的链表，没有谁被跳过的，然后开始执行render，高优先级执行完，低优先级被跳过，计算出了baseState、memoState，被跳过的组成了新的baseQueue，然后
+		// 执行commitRoot，wip变为了current，紧接着接着调度，再到这里的时候baseState是上次计算的，baseQueue是上次跳过的，pending为null，我们进入计算，计算完baseQueue也为Null,baseState、memoState也是新计算出来的。
+		// 4.如果低优先级的组件的hook还没有开始render到就被打断了（可能上面的组件render完了，还没轮到它），其实新的更新pending会进入到pendingQueue，跟老的构成环状链表，紧接着执行完高优先级的，跳过低的将低的存到wip basequeue，计算出来的baseState也会被存起来wip hook，进入commit再重新调度低的, fiber树切换，从current树basequeue中恢复过来重新计算（baseState也是上次计算后的结果），
+		// 5.等所有的更新执行完hook的baseQueue就为空了然后baseState、memoState也是相同的状态
+		// 6.只要没有更高优先级的打断执行完本次render就会进入commitroot，然后开启下一次调度流程。
+		// 7.总结，如果低优先级被打断，但是低优先级的pendingQueue存到了current fiber的baseQueue了，那么高优先级进来，会跟低优先级的update组成环状链表，计算完高优先级，因为还有剩下的没有被处理的更新，我们存到wip hook.baseQueue，执行完commit root
+		// wip 变为 current，然后开始render低优先级，然后再从current.baseQueue中恢复出来上次遗留的updateQueue。
+
+		queue.shared.pending = null; // 重置pendingQueue，
 	}
 
 	if (baseQueue !== null) {
@@ -466,6 +484,23 @@ function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
 
 	// 第三次改变优先级，还原优先级
 	currentBatchConfig.transition = preTransition;
+}
+
+// mount时期的useRef
+// const ref = useRef(null)
+function mountRef<T>(initialValue: T): { current: T } {
+	const hook = mountWorkInProgressHook();
+	const ref = {
+		current: initialValue
+	};
+	hook.memoizedState = ref;
+
+	return ref;
+}
+
+function updateRef<T>(initialValue: T): { current: T } {
+	const hook = updateWorkInProgressHook();
+	return hook.memoizedState;
 }
 
 // dispatch方法  从当前触发更新的fiebrNode调度更新(从当前fiebr找到fiberRootNode)

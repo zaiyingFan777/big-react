@@ -8,18 +8,23 @@ import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
 // react 导出Fragment
 export { REACT_FRAGMENT_TYPE as Fragment } from 'shared/ReactSymbols';
 export const useState: Dispatcher['useState'] = (initialState) => {
-	const dispatcher = resolveDispatcher();
+	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useState(initialState); // 得到[num, setNum]
 };
 
 export const useEffect: Dispatcher['useEffect'] = (create, deps) => {
-	const dispatcher = resolveDispatcher();
+	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useEffect(create, deps);
 };
 
 export const useTransition: Dispatcher['useTransition'] = () => {
-	const dispatcher = resolveDispatcher();
+	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useTransition();
+};
+
+export const useRef: Dispatcher['useRef'] = (initialValue) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.useRef(initialValue);
 };
 
 // 内部数据共享层

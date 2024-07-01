@@ -12,11 +12,13 @@ import { FiberNode, FiberRootNode, PendingPassiveEffects } from './fiber';
 import {
 	ChildDeletion,
 	Flags,
+	LayoutMask,
 	MutationMask,
 	NoFlags,
 	PassiveEffect,
 	PassiveMask,
 	Placement,
+	Ref,
 	Update
 } from './fiberFlags';
 import {
@@ -30,48 +32,84 @@ import { HookHasEffect } from './hookEffectTags';
 
 let nextEffect: FiberNode | null = null;
 
-// mutation时期执行的方法
-// finishedWork: 生成的wip fiberNode (hostFiberRoot)
-export const commitMutationEffects = (
-	finishedWork: FiberNode,
-	root: FiberRootNode
+// mutation、layout阶段
+export const commitEffects = (
+	phrase: 'mutation' | 'layout',
+	mask: Flags,
+	callback: (fiber: FiberNode, root: FiberRootNode) => void
 ) => {
-	nextEffect = finishedWork;
+	return (finishedWork: FiberNode, root: FiberRootNode) => {
+		nextEffect = finishedWork;
 
-	while (nextEffect !== null) {
-		// 向下遍历
-		const child: FiberNode | null = nextEffect.child;
-		if (
-			(nextEffect.subtreeFlags & (MutationMask | PassiveMask)) !== NoFlags &&
-			child !== null
-		) {
-			// 继续向子节点遍历，说明子节点有Mutation阶段的操作
-			nextEffect = child;
-		} else {
-			// 说明遍历到底了，或者找到的节点没有subtreeFlags了(或者说没有subtreeFlags了，但可能有flags)
-			// <div><span>111</span></div>  假设span的flag为Placement，div的subtreeFlags为1(div没有其他的flag)，所以我们找到span因为他没有subtreeflag但是有flag，需要插入
-			// 这时候我们需要向上遍历 dfs
-			up: while (nextEffect !== null) {
-				// 执行Placement、Update、ChildDeletion、PassiveEffect等操作
-				commitMutationEffectsOnFiber(nextEffect, root);
-				// 找兄弟节点
-				const sibling: FiberNode | null = nextEffect.sibling;
-				// 执行兄弟节点的向下遍历操作
-				if (sibling !== null) {
-					nextEffect = sibling;
-					break up;
+		while (nextEffect !== null) {
+			// 向下遍历
+			const child: FiberNode | null = nextEffect.child;
+			if ((nextEffect.subtreeFlags & mask) !== NoFlags && child !== null) {
+				// 继续向子节点遍历，说明子节点有Mutation阶段的操作
+				nextEffect = child;
+			} else {
+				// 说明遍历到底了，或者找到的节点没有subtreeFlags了(或者说没有subtreeFlags了，但可能有flags)
+				// <div><span>111</span></div>  假设span的flag为Placement，div的subtreeFlags为1(div没有其他的flag)，所以我们找到span因为他没有subtreeflag但是有flag，需要插入
+				// 这时候我们需要向上遍历 dfs
+				up: while (nextEffect !== null) {
+					// 执行Placement、Update、ChildDeletion、PassiveEffect等操作
+					callback(nextEffect, root);
+					// 找兄弟节点
+					const sibling: FiberNode | null = nextEffect.sibling;
+					// 执行兄弟节点的向下遍历操作
+					if (sibling !== null) {
+						nextEffect = sibling;
+						break up;
+					}
+					nextEffect = nextEffect.return;
 				}
-				nextEffect = nextEffect.return;
 			}
 		}
-	}
+	};
 };
+
+// mutation时期执行的方法
+// finishedWork: 生成的wip fiberNode (hostFiberRoot)
+// export const commitMutationEffects = (
+// 	finishedWork: FiberNode,
+// 	root: FiberRootNode
+// ) => {
+// 	nextEffect = finishedWork;
+
+// 	while (nextEffect !== null) {
+// 		// 向下遍历
+// 		const child: FiberNode | null = nextEffect.child;
+// 		if (
+// 			(nextEffect.subtreeFlags & (MutationMask | PassiveMask)) !== NoFlags &&
+// 			child !== null
+// 		) {
+// 			// 继续向子节点遍历，说明子节点有Mutation阶段的操作
+// 			nextEffect = child;
+// 		} else {
+// 			// 说明遍历到底了，或者找到的节点没有subtreeFlags了(或者说没有subtreeFlags了，但可能有flags)
+// 			// <div><span>111</span></div>  假设span的flag为Placement，div的subtreeFlags为1(div没有其他的flag)，所以我们找到span因为他没有subtreeflag但是有flag，需要插入
+// 			// 这时候我们需要向上遍历 dfs
+// 			up: while (nextEffect !== null) {
+// 				// 执行Placement、Update、ChildDeletion、PassiveEffect等操作
+// 				commitMutationEffectsOnFiber(nextEffect, root);
+// 				// 找兄弟节点
+// 				const sibling: FiberNode | null = nextEffect.sibling;
+// 				// 执行兄弟节点的向下遍历操作
+// 				if (sibling !== null) {
+// 					nextEffect = sibling;
+// 					break up;
+// 				}
+// 				nextEffect = nextEffect.return;
+// 			}
+// 		}
+// 	}
+// };
 
 const commitMutationEffectsOnFiber = (
 	finishedWork: FiberNode,
 	root: FiberRootNode
 ) => {
-	const flags = finishedWork.flags;
+	const { flags, tag } = finishedWork;
 
 	// flag Placement
 	if ((flags & Placement) !== NoFlags) {
@@ -102,14 +140,77 @@ const commitMutationEffectsOnFiber = (
 		// 移除标记
 		finishedWork.flags &= ~ChildDeletion;
 	}
-	// falg PassiveEffect
+	// flag PassiveEffect
 	if ((flags & PassiveEffect) !== NoFlags) {
 		// 收集effect回调
 		commitPassiveEffect(finishedWork, root, 'update');
 		// 收集完，finishedWork.flags移除PassiveEffect
 		finishedWork.flags &= ~PassiveEffect;
 	}
+
+	// flag Ref
+	if ((flags & Ref) !== NoFlags && tag === HostComponent) {
+		// mutation阶段 hostComponent 解除绑定ref
+		safelyDetachRef(finishedWork);
+	}
 };
+
+const commitLayoutEffectsOnFiber = (
+	finishedWork: FiberNode,
+	root: FiberRootNode
+) => {
+	const { flags, tag } = finishedWork;
+
+	// flag Ref
+	if ((flags & Ref) !== NoFlags && tag === HostComponent) {
+		// layout阶段 hostComponent 绑定新的ref
+		safelyAttachRef(finishedWork);
+		finishedWork.flags &= ~Ref;
+	}
+};
+
+// mutation解绑之前的ref
+function safelyDetachRef(current: FiberNode) {
+	const ref = current.ref;
+	if (ref !== null) {
+		if (typeof ref === 'function') {
+			ref(null);
+		} else {
+			ref.current = null;
+		}
+	}
+}
+
+// layout绑定新的ref
+function safelyAttachRef(fiber: FiberNode) {
+	const ref = fiber.ref;
+	if (ref !== null) {
+		// 找到dom节点
+		const instance = fiber.stateNode;
+		if (typeof ref === 'function') {
+			// <div ref={dom => console.log(dom)}></div>
+			ref(instance);
+		} else {
+			// {current: T}
+			// <div ref={ref}></div>
+			ref.current = instance;
+		}
+	}
+}
+
+// mutation时期执行的方法
+export const commitMutationEffects = commitEffects(
+	'mutation',
+	MutationMask | PassiveMask,
+	commitMutationEffectsOnFiber
+);
+
+// layout时期执行的方法
+export const commitLayoutEffects = commitEffects(
+	'layout',
+	LayoutMask,
+	commitLayoutEffectsOnFiber
+);
 
 function commitPassiveEffect(
 	fiber: FiberNode,
@@ -273,7 +374,8 @@ function commitDeletion(childToDelete: FiberNode, root: FiberRootNode) {
 			case HostComponent:
 				// 这里会找到childToDelete下面第一个host类型的子节点并删除
 				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
-				// TODO 解绑ref
+				// 解绑ref
+				safelyDetachRef(unmountFiber);
 				return;
 			case HostText:
 				// 这里会找到childToDelete下面第一个host类型的子节点并删除

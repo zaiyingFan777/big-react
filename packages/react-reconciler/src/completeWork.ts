@@ -13,11 +13,15 @@ import {
 	HostRoot,
 	HostText
 } from './workTags';
-import { NoFlags, Update } from './fiberFlags';
+import { NoFlags, Ref, Update } from './fiberFlags';
 
 // completework标记更新
 function markUpdate(fiber: FiberNode) {
 	fiber.flags |= Update;
+}
+
+function markRef(fiber: FiberNode) {
+	fiber.flags |= Ref;
 }
 
 /**
@@ -47,6 +51,11 @@ export const completeWork = (wip: FiberNode) => {
 				// 所以把更新属性的操作放在commit中去做，然后commit调用hostConfig的方法)
 				// commitWork去处理commitUpdate的更新，commitUpdate属于react-dom中的hostConfig里的方法。这样操作属性的方法就收敛到react-dom中。
 				markUpdate(wip);
+				// 标记ref
+				if (current.ref !== wip.ref) {
+					// update时需要保证 current.ref与wip.ref不相同，就标记ref
+					markRef(wip);
+				}
 			} else {
 				// mount
 				// 1.构建DOM
@@ -56,6 +65,11 @@ export const completeWork = (wip: FiberNode) => {
 				appendAllChildren(instance, wip);
 				// 3.将创建的instance赋值给wip
 				wip.stateNode = instance;
+				// 标记ref
+				if (wip.ref !== null) {
+					// mount时，只要wip.ref不为null，就标记ref
+					markRef(wip);
+				}
 			}
 			bubbleProperties(wip);
 			return null;

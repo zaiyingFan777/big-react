@@ -748,7 +748,7 @@ function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
 	// 第三次改变优先级，还原优先级
 	currentBatchConfig.transition = preTransition;
 }
-// 上面点击事件执行后，进入startTransition，先执行setPending(true);发起一次微任务调度（同步更新，action: true进入hook的updateQueue），然后代码紧接着会同步执行const preTransition = currentBatchConfig.transition;
+// 上面点击事件执行后，进入startTransition，先执行setPending(true);发起一次微任务调度（同步更新，action: true进入hook的updateQueue），然后代码紧接着会!!!同步执行const preTransition = currentBatchConfig.transition;
 // preTransition => null，设置currentBatchConfig.transition = 1;，进入transitionLane。
 // 执行callback()，也就是() => {setTab(nextTab)};，执行setTab('contact')，这时候进入dispatch，lane为8，update为{action: "contact", lane: 8, next: null}并进入相对应的Hook的updateQueue。紧接着发起一起宏任务调度（lane为8）,此时root.pendingLanes: 9, callbackPriority: 1，进入 ensureRootIsScheduled(root);但是这时候最高优先级依然为1，return 出来，这里可以看出，setState都是异步，先把update推入到hook.updateQueue，以及给root的pendingLanes增加要更新的Lane，其他的操作也没有。
 // 紧接着执行setPending(false);依然是触发dispatch，优先级为8，update为{action: false, lane: 8, next: null}，进入hook.updateQueue，这时候setPending的hook.updateQueue的为{lane: 8, action: false, next: {lane: 1, action: true, next: {...} }}的环状链表，紧接着产生调度，将优先级8合并到root.pendingLanes中（依然为9）
@@ -766,3 +766,44 @@ function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
 // baseQueue为{action: "contact", lane: 8}，baseState以及memoizedState为"about"，pending为null，计算过程同上，计算出来hook.baseState、hook.memoizedState为"contact"，baseQueue为null，
 // ...进入commitRoot阶段移除本次更新8 root.pendingLanes = 0,以及diff出来的结果重新渲染。最后再进入ensureRootIsScheduled 取出来的最高优先级为0。
 ```
+
+## 18. useRef
+
+1. useRef 的数据结构
+
+- string(废弃)
+- (instance: T) => void
+
+```tsx
+// 当div挂载到页面上，ref的回调函数就会执行 dom对应的就是div节点
+<div ref={(dom) => console.log(dom)}></div>
+```
+
+- {current: T}
+
+```tsx
+// 默认的current为null，等div挂载到dom上了，current指向div节点
+<div ref={domRef}></div>
+```
+
+2. ref 编译后的结果: 可以看出 div 的 Props 中的 ref 其实是 mount/update 时期执行 useRef 返回的 ref 对象
+
+```tsx
+function App() {
+	const ref = useRef(null);
+	return <div ref={ref}>ref</div>;
+}
+<App />;
+// 编译后
+import { jsx as _jsx } from 'react/jsx-runtime';
+function App() {
+	const ref = useRef(null);
+	return /*#__PURE__*/ _jsx('div', {
+		ref: ref,
+		children: 'ref'
+	});
+}
+/*#__PURE__*/ _jsx(App, {});
+```
+
+3. test-ref 的打印流程需要注意
