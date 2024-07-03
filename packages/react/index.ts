@@ -7,6 +7,8 @@ import currentBatchConfig from './src/currentBatchConfig';
 import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
 // react 导出Fragment
 export { REACT_FRAGMENT_TYPE as Fragment } from 'shared/ReactSymbols';
+// react导出 createContext
+export { createContext } from './src/context';
 export const useState: Dispatcher['useState'] = (initialState) => {
 	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useState(initialState); // 得到[num, setNum]
@@ -25,6 +27,11 @@ export const useTransition: Dispatcher['useTransition'] = () => {
 export const useRef: Dispatcher['useRef'] = (initialValue) => {
 	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useRef(initialValue);
+};
+
+export const useContext: Dispatcher['useContext'] = (context) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.useContext(context);
 };
 
 // 内部数据共享层

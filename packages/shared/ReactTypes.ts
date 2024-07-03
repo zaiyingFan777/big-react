@@ -22,3 +22,18 @@ export interface ReactElementType {
 // this.setState({xx:1})
 // this.setState(({xx:1}) => ({xx:2}))
 export type Action<State> = State | ((prevState: State) => State);
+
+// context
+export type ReactContext<T> = {
+	$$typeof: symbol | number;
+	// <ctx.Provider value={}></ctx.Provider>
+	Provider: ReactProviderType<T> | null;
+	// 上面value存放的值
+	_currentValue: T;
+};
+
+export type ReactProviderType<T> = {
+	$$typeof: symbol | number;
+	// 指向Provider对应的context
+	_context: ReactContext<T> | null;
+};

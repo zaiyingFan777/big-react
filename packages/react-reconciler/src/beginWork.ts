@@ -16,6 +16,7 @@ import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { processUpdateQueue, UpdateQueue } from './updateQueue';
 import {
+	ContextProvider,
 	Fragment,
 	FunctionComponent,
 	HostComponent,
@@ -26,6 +27,7 @@ import { mountChildFibers, reconcileChildFibers } from './childFibers';
 import { renderWithHooks } from './fiberHooks';
 import { Lane } from './fiberLanes';
 import { Ref } from './fiberFlags';
+import { pushProvider } from './fiberContext';
 
 // 递归中的递阶段，renderLane本次更新的lane
 export const beginWork = (wip: FiberNode, renderLane: Lane) => {
@@ -48,6 +50,8 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 			return updateFunctionComponent(wip, renderLane); // 递阶段完事，开始归阶段
 		case Fragment:
 			return updateFragment(wip);
+		case ContextProvider:
+			return updateContextProvider(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型', wip.tag);
@@ -56,6 +60,47 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	}
 	return null;
 };
+
+function updateContextProvider(wip: FiberNode) {
+	// context.Provider = {
+	// 	$$typeof: REACT_PROVIDER_TYPE,
+	// 	// 指向Provider对应的context
+	// 	_context: context
+	// };
+	const providerType = wip.type;
+	const context = providerType._context;
+	// const ctx = createContext(0);
+	// function App() {
+	// 	return (
+	// 		<ctx.Provider value={1}>
+	// 			<div>
+	// 				<Middle />
+	// 			</div>
+	// 		</ctx.Provider>
+	// 	);
+	// }
+	// <App />;
+	// // 编译后
+	// import { jsx as _jsx } from 'react/jsx-runtime';
+	// const ctx = createContext(0);
+	// function App() {
+	// 	return /*#__PURE__*/ _jsx(ctx.Provider, {
+	// 		value: 1,
+	// 		children: /*#__PURE__*/ _jsx('div', {
+	// 			children: /*#__PURE__*/ _jsx(Middle, {})
+	// 		})
+	// 	});
+	// }
+	const newProps = wip.pendingProps;
+
+	// 更新context._currentValue
+	pushProvider(context, newProps.value);
+
+	const nextChildren = newProps.children;
+	reconcileChildren(wip, nextChildren);
+
+	return wip.child;
+}
 
 // 下面这句话的children都是ReactElement
 // 无论hostRootFiber的children总是在fiber.memoizedState上, hostComponent的children在pendingProps 这样就是为了父fiber beginWork的时候根据对比儿子 current fiberNode与儿子 reactElement

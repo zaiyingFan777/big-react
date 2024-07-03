@@ -7,13 +7,15 @@ import {
 	FunctionComponent,
 	HostComponent,
 	WorkTag,
-	Fragment
+	Fragment,
+	ContextProvider
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig'; // tsconfig.json中配置了
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
 import { CallbackNode } from 'scheduler';
+import { REACT_PROVIDER_TYPE } from 'shared/ReactSymbols';
 
 // jsx 经过babel编译为 jsx() React.createElement()，之后调用jsx()或React.createElement()[这里面是我们实现的jsx]会生成 ReactElement
 // ReactElement => FiberNode => DOM
@@ -215,6 +217,12 @@ export function createFiberFromElement(element: ReactElementType) {
 	if (typeof type === 'string') {
 		// <div/> type: 'div'
 		fiberTag = HostComponent;
+	} else if (
+		typeof type === 'object' &&
+		type.$$typeof === REACT_PROVIDER_TYPE
+	) {
+		// ctx.provider
+		fiberTag = ContextProvider;
 	} else if (typeof type === 'function' && __DEV__) {
 		fiberTag = FunctionComponent;
 		// console.warn('未定义的type类型', element);

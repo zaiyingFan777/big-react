@@ -767,6 +767,8 @@ function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
 // ...进入commitRoot阶段移除本次更新8 root.pendingLanes = 0,以及diff出来的结果重新渲染。最后再进入ensureRootIsScheduled 取出来的最高优先级为0。
 ```
 
+!!!备注: 如果是在执行并发更新流程，那么他的调度是在宏任务中做的，如果突然来了个点击事件，那么点击事件会被事件触发线程将回调函数推到事件队列（宏任务队列中），然后等待宏任务队列挨个执行，到点击事件的回调，会触发同步更新的优先级渲染，那么会在微任务中完成 render 工作，先取消上次宏任务的并发更新，然后执行微任务的同步更新。
+
 ## 18. useRef
 
 1. useRef 的数据结构
@@ -807,3 +809,109 @@ function App() {
 ```
 
 3. test-ref 的打印流程需要注意
+
+## 19.Context
+
+先看下 Context 编译后的结果
+
+```tsx
+const ctx = createContext(0);
+function App() {
+	return (
+		<ctx.Provider value={1}>
+			<div>
+				<Middle />
+			</div>
+		</ctx.Provider>
+	);
+}
+<App />;
+// 编译后
+import { jsx as _jsx } from 'react/jsx-runtime';
+const ctx = createContext(0);
+function App() {
+	return /*#__PURE__*/ _jsx(ctx.Provider, {
+		value: 1,
+		children: /*#__PURE__*/ _jsx('div', {
+			children: /*#__PURE__*/ _jsx(Middle, {})
+		})
+	});
+}
+/*#__PURE__*/ _jsx(App, {});
+```
+
+1. context 逻辑的实现
+
+- 支持 context.\_currentValue 的变化
+
+```tsx
+// 流程：ctx的_currentValue为0
+const ctx = createContext(0); // context._currentValue = 0
+
+// ctx._currentValue = 1
+// 入栈：prevContextValueStack: [null]; prevContextValue = context._currentValue = 0; context._currentValue = 1;
+<ctx.Provider value={1}>
+	{/* ctx._currentValue = 1 */}
+  <Cpn />
+{/* 出栈 context._currentValue = prevContextValue = 0; prevContextValue = [null].pop() = null; */}
+</ctx.Provider>
+// 恢复 ctx._currentValue = 0
+<Cpn />
+```
+
+- 嵌套的 context
+
+```tsx
+const ctx = createContext(-1); // context._currentValue = -1 prevContextValue: null, prevContextValueStack []
+// 入栈 [null], prevContextValue = -1, context._currentValue = 0
+<ctx.Provider value={0}>
+	{/* ctx._currentValue = 0 */}
+	<Cpn />
+	{/* 入栈 [null, -1], prevContextValue = 0, context._currentValue = 1  */}
+	<ctx.Provider value={1}>
+		{/* ctx._currentValue = 1 */}
+		<Cpn />
+		{/* 入栈 [null, -1, 0], prevContextValue = 1, context._currentValue = 2  */}
+		<ctx.Provider value={2}>
+			{/* ctx._currentValue = 2 */}
+			<Cpn />
+			{/* 出栈：context._currentValue = 1 ,prevContextValue = 0, [null, -1] */}
+		</ctx.Provider>
+		{/* 第一次出栈了, context._currentValue = 1 */}
+		{/* 出栈：context._currentValue = 0 ,prevContextValue = -1, [null] */}
+	</ctx.Provider>
+	{/* ctx._currentValue = 0 */}
+	{/* 出栈：context._currentValue = -1 ,prevContextValue = null, [] */}
+</ctx.Provider>;
+// ctx._currentValue = -1
+```
+
+- 不同类型 context 的嵌套会有问题么？
+
+```tsx
+// ctxA = createContext('a-1');
+// ctxB = createContext('b-1');
+// 入栈：[null], prevContextValue = 'a-1', ctxA._currentValue = 'a0'
+<ctxA.Provider value={'a0'}>
+	{/* ctxA._currentValue = 'a0' */}
+	{/* 入栈：[null， 'a-1'], prevContextValue = 'b-1', ctxB._currentValue = 'b0'（ctxA._currentValue = 'a0'） */}
+	<ctxB.Provider value={'b0'}>
+		{/* ctxB._currentValue = 'b0' ctxA._currentValue = 'a0' */}
+		{/* 入栈：[null， 'a-1', 'b-1'], prevContextValue = 'a0', ctxA._currentValue = 'a1'（ctxB._currentValue = 'b0'） */}
+		<ctxA.Provider value={'a1'}>
+			{/* ctxA._currentValue = 'a1'（ctxB._currentValue = 'b0'） */}
+			<Cpn />
+			{/* 出栈：ctxA._currentValue = 'a0', prevContextValue = [null， 'a-1', 'b-1'].pop() = 'b-1' [null， 'a-1'] */}
+		</ctxA.Provider>
+		{/* ctxA._currentValue = 'a0' ctxB._currentValue = 'b0' */}
+		<Cpn />
+		{/* 出栈：ctxB._currentValue = 'b-1', prevContextValue = [null， 'a-1'].pop() = 'a-1' , [null] */}
+	</ctxB.Provider>
+	{/* ctxA._currentValue = 'a0' ctxB._currentValue = 'b-1' */}
+	{/* 出栈：ctxA._currentValue = 'a-1', prevContextValue = [null].pop() = null, [] */}
+</ctxA.Provider>
+// ctxA._currentValue = 'a-1'  ctxB._currentValue = 'b-1',
+```
+
+- todo React 性能优化造成的影响:
+- useContext 没有其他 hook 的限制，因为 context 的数据没有保存在 hook 链表中。

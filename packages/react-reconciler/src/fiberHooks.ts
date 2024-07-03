@@ -10,7 +10,7 @@ import {
 	Update,
 	UpdateQueue
 } from './updateQueue';
-import { Action } from 'shared/ReactTypes';
+import { Action, ReactContext } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
@@ -102,14 +102,16 @@ const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
 	useEffect: mountEffect,
 	useTransition: mountTransition,
-	useRef: mountRef
+	useRef: mountRef,
+	useContext: readContext
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
 	useEffect: updateEffect,
 	useTransition: updateTransition,
-	useRef: updateRef
+	useRef: updateRef,
+	useContext: readContext
 };
 
 function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
@@ -541,4 +543,18 @@ function mountWorkInProgressHook(): Hook {
 		workInProgressHook = hook;
 	}
 	return workInProgressHook;
+}
+
+// const x = useContext(ctx)
+function readContext<T>(context: ReactContext<T>): T {
+	// 消费者为当前正在工作的fiebr
+	const consumer = currentlyRenderingFiber;
+	if (consumer === null) {
+		// 脱离了函数组件的使用
+		// throw new Error('useContext must be inside a function component');
+		throw new Error('只能在函数组件中调用useContext');
+	}
+
+	const value = context._currentValue;
+	return value;
 }
