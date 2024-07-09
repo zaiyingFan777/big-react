@@ -10,11 +10,13 @@ import {
 	Update,
 	UpdateQueue
 } from './updateQueue';
-import { Action, ReactContext } from 'shared/ReactTypes';
+import { Action, ReactContext, Thenable, Usable } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
 import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
 import { HookHasEffect, Passive } from './hookEffectTags';
+import { REACT_CONTEXT_TYPE } from 'shared/ReactSymbols';
+import { trackUsedThenable } from './thenable';
 
 const { currentDispatcher } = internals;
 
@@ -103,7 +105,8 @@ const HooksDispatcherOnMount: Dispatcher = {
 	useEffect: mountEffect,
 	useTransition: mountTransition,
 	useRef: mountRef,
-	useContext: readContext
+	useContext: readContext,
+	use
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
@@ -111,7 +114,8 @@ const HooksDispatcherOnUpdate: Dispatcher = {
 	useEffect: updateEffect,
 	useTransition: updateTransition,
 	useRef: updateRef,
-	useContext: readContext
+	useContext: readContext,
+	use
 };
 
 function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
@@ -362,7 +366,7 @@ function updateWorkInProgressHook(): Hook {
 		// update        u1 u2 u3 u4
 		// if (xxx) {useState()} u4
 		throw new Error(
-			`组件${currentlyRenderingFiber?.type}本次执行时的Hook比上次执行时多`
+			`组件${currentlyRenderingFiber?.type.name}本次执行时的Hook比上次执行时多`
 		);
 	}
 
@@ -557,4 +561,43 @@ function readContext<T>(context: ReactContext<T>): T {
 
 	const value = context._currentValue;
 	return value;
+}
+
+// use接受两个参数
+// 1.Thenable promise.ther
+// function fetchData(id, timeout) {
+// 	const cache = cachePool[id];
+// 	if (cache) {
+// 		return cache;
+// 	}
+// 	return (cachePool[id] = delay(timeout).then(() => {
+// 		return { data: Math.random().toFixed(2) * 100 };
+// 	}));
+// }
+// const { data } = use(fetchData(id, timeout)); fetchData是一个promise实例并且promise实例有then方法
+// 2.ReactContext
+function use<T>(usable: Usable<T>): T {
+	// 用户传进来的是一个promise实例，那么实例会有then方法
+	// console.log(usable, 'xxxxxxxxx');
+	if (usable !== null && typeof usable === 'object') {
+		// 有可能是thenable或者reactcontext
+		if (typeof (usable as Thenable<T>).then === 'function') {
+			// thenable
+			const thenable = usable as Thenable<T>;
+			return trackUsedThenable(thenable);
+		} else if ((usable as ReactContext<T>).$$typeof === REACT_CONTEXT_TYPE) {
+			// reactcontext
+			const context = usable as ReactContext<T>;
+			return readContext(context);
+		}
+	}
+	throw new Error('不支持的use参数: ' + usable);
+}
+
+// 重置FC全局变量
+export function resetHooksOnUnwind(): void {
+	// 重置正在更新的fiber、hook
+	currentlyRenderingFiber = null;
+	currentHook = null;
+	workInProgressHook = null;
 }

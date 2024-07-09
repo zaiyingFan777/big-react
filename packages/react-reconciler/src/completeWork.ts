@@ -12,10 +12,13 @@ import {
 	FunctionComponent,
 	HostComponent,
 	HostRoot,
-	HostText
+	HostText,
+	OffscreenComponent,
+	SuspenseComponent
 } from './workTags';
-import { NoFlags, Ref, Update } from './fiberFlags';
+import { NoFlags, Ref, Update, Visibility } from './fiberFlags';
 import { popProvider } from './fiberContext';
+import { popSuspenseHandler } from './suspenseContext';
 
 // completework标记更新
 function markUpdate(fiber: FiberNode) {
@@ -105,12 +108,38 @@ export const completeWork = (wip: FiberNode) => {
 		case HostRoot:
 		case FunctionComponent:
 		case Fragment:
+		case OffscreenComponent:
 			bubbleProperties(wip);
 			return null;
 		case ContextProvider:
 			// 出栈
 			const context = wip.type._context;
 			popProvider(context);
+			bubbleProperties(wip);
+			return null;
+		case SuspenseComponent:
+			// suspense 出栈
+			popSuspenseHandler();
+			// beginwork SuspenseComponent return offscreen或者return fragment(fallback) 进入归阶段也是从offscreen或者fallback归到suspense
+			// 如果是从fallback归到suspense，那么offscreen存在fiber树中，但不会进入completeWork的工作，但一定会进入suspense的completework中
+			// 因此在suspense的completework中比较current offscreen mode和wip offscreen mode
+			const offscreenFiber = wip.child as FiberNode;
+			const isHidden = offscreenFiber.pendingProps.mode === 'hidden';
+			const currentOffscreenFiber = offscreenFiber.alternate;
+
+			if (currentOffscreenFiber !== null) {
+				// update流程
+				const wasHidden = currentOffscreenFiber.pendingProps.mode === 'hidden';
+				if (isHidden !== wasHidden) {
+					// 可见性的变化
+					offscreenFiber.flags |= Visibility;
+					bubbleProperties(offscreenFiber);
+				}
+			} else if (isHidden) {
+				// mount并且是隐藏状态
+				offscreenFiber.flags |= Visibility;
+				bubbleProperties(offscreenFiber);
+			}
 			bubbleProperties(wip);
 			return null;
 		default:

@@ -1,6 +1,6 @@
 // 内部数据共享层，当前使用的Hooks集合
 
-import { Action, ReactContext } from 'shared/ReactTypes';
+import { Action, ReactContext, Usable } from 'shared/ReactTypes';
 
 // react开发者 => import { useState } from 'react' => 内部数据共享层--当前使用的Hooks集合 => Reconciler(mount时：useState、update时：useState、Hook上下文：useState)
 
@@ -11,6 +11,7 @@ export interface Dispatcher {
 	useTransition: () => [boolean, (callback: () => void) => void];
 	useRef: <T>(initialValue: T) => { current: T };
 	useContext: <T>(context: ReactContext<T>) => T;
+	use: <T>(usable: Usable<T>) => T;
 }
 
 export type Dispatch<State> = (action: Action<State>) => void;

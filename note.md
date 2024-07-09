@@ -915,3 +915,172 @@ const ctx = createContext(-1); // context._currentValue = -1 prevContextValue: n
 
 - todo React 性能优化造成的影响:
 - useContext 没有其他 hook 的限制，因为 context 的数据没有保存在 hook 链表中。
+
+## 20.Suspense
+
+```tsx
+// children是一个数组
+<Suspense fallback={<div>loading...</div>}>
+	<div>big</div>
+	<div>react</div>
+</Suspense>;
+// 编译后
+import { jsx as _jsx, jsxs as _jsxs } from 'react/jsx-runtime';
+/*#__PURE__*/ _jsxs(Suspense, {
+	fallback: /*#__PURE__*/ _jsx('div', {
+		children: 'loading...'
+	}),
+	children: [
+		/*#__PURE__*/ _jsx('div', {
+			children: 'big'
+		}),
+		/*#__PURE__*/ _jsx('div', {
+			children: 'react'
+		})
+	]
+});
+// children是一个元素
+<Suspense fallback={<div>loading...</div>}>
+	<div>big</div>
+</Suspense>;
+// 编译后
+import { jsx as _jsx } from 'react/jsx-runtime';
+/*#__PURE__*/ _jsx(Suspense, {
+	fallback: /*#__PURE__*/ _jsx('div', {
+		children: 'loading...'
+	}),
+	children: /*#__PURE__*/ _jsx('div', {
+		children: 'big'
+	})
+});
+```
+
+1. 总结：凡是涉及 「初始状态」 -> 「中间状态」 -> 「结束状态」 的流程，都可以纳入<Suspense/>
+
+- 正常状态，<Suspense/>渲染子孙组件
+- 挂起状态，<Suspense/>渲染 fallback
+
+  2.Suspense 实现思路
+  ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/6r5q8qlkfhvhyj.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题')
+  对于下面的代码，一共存在 4 种流程：
+
+```tsx
+<Suspense fallback={<div>loading...</div>}>
+	<Cpn />
+</Suspense>
+```
+
+- 1.mount 时正常流程（对应方法 mountSuspensePrimaryChildren）
+
+- 2.update 时正常流程（对应方法 updateSuspensePrimaryChildren）
+
+- 3.mount 时挂起流程（对应方法 mountSuspenseFallbackChildren）
+
+- 4.update 时挂起流程（对应方法 updateSuspenseFallbackChildren）
+
+3. Suspense 工作流程
+
+- 1.beginWork 时进入上述任一流程
+
+- 2.completeWork 时对比 current Offscreen mode 与 wip Offscreen mode，如果发现下述情况，则标记 Visibility effectTag：
+
+  - mode 从 hidden 变为 visible
+
+  - mode``从 visible 变为 hidden
+
+  - current === null && hidden
+
+- 3.commitWork 时处理 Visibility effectTag
+  处理 Visibility effectTag 时需要找到所有子树顶层 Host 节点：
+
+```tsx
+function Cpn() {
+  return (
+    <p>123</p>
+  )
+}
+
+情况1，一个host节点：
+<Suspense fallback={<div>loading...</div>}>
+  <Cpn/>
+</Suspense>
+
+情况2，多个host节点：
+<Suspense fallback={<div>loading...</div>}>
+	<Cpn/>
+	<div>
+		<p>你好</p>
+	</div>
+</Suspense>
+```
+
+4. 如何触发 Suspense？思考一个问题：上述 4 种流程是在「不同更新触发的 render 流程」中出现的么？
+
+对于 demo 中的例子，经历了：
+
+- 正常流程对应 render 阶段
+
+- 遇到 use，进入挂起流程
+
+- 进入挂起流程对应 render 阶段
+
+- 进入挂起流程对应 commit 阶段（渲染 loading）
+
+- 请求返回后，进入正常流程对应 render 阶段
+
+- 进入正常流程对应 commit 阶段（渲染 Cpn）
+
+Suspense 涉及到 render 阶段的一个新流程 —— unwind 流程
+
+总结学到的三种流程：
+
+- beginWork：往下深度优先遍历
+
+- completeWork：往上深度优先遍历
+
+- unwind：往上遍历祖辈
+
+Demo 中的 unwind 流程：
+![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/b4vn4wlkfhvhyi.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题')
+数据返回后的正常流程：
+![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/gffo1clkfhvhyc.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+
+5. 实现 use hook 与 unwind 流程
+   use 可以接收的数据类型：
+
+- Thenable
+- ReactContext
+  unwind 流程如何进行到最近的 Suspense？
+  ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/fxc2qelkfhvhyg.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+
+7. 大概 suspense 运行流程(以 test-suspense 为例)
+
+```tsx
+export function Cpn({ id, timeout }) {
+	const [num, updateNum] = useState(0);
+	const { data } = use(fetchData(id, timeout));
+
+	if (num !== 0 && num % 5 === 0) {
+		cachePool[id] = null;
+	}
+
+	useEffect(() => {
+		console.log('effect create');
+		return () => console.log('effect destroy');
+	}, []);
+
+	return (
+		<ul onClick={() => updateNum(num + 1)}>
+			<li>ID: {id}</li>
+			<li>随机数: {data}</li>
+			<li>状态: {num}</li>
+		</ul>
+	);
+}
+// mount流程先执行正常的render流程，遇到beginwork cpn的时候，执行cpn函数遇到了use，会对use里的参数fetchData(id, timeout)promise实例进行封装，并throw err，这时候renderRoot的dowhile循环会被打断，
+// 进行一些workInProgressHook等变量的重置，并且找到最近的suspense打上flag(ShouldCapture)，并且在给上次封装好的promise实例再次封装，添加Ping方法（就是为了等promise完毕后重新执行新的render流程）。
+// 然后进行unwind流程找到最近的suspense(flag为ShouldCapture移除这个标记，添加DidCapture标记)，然后重新beginwork流程，展示fallback（挂起流程），等promise执行完重新触发新的!!!render流程，进入Cpn的beginwork这时候use返回值就是promise返回值了，
+// 可以进行新的render流程（非挂起的流程）
+// 注意：如果是有suspense组件，那么root.suspendedLanes 和 root.pingdLanes 都为Nolanes，那么Ping的时候调用markRootPinged函数给root.pingdLanes附加root.suspendedLanes & pingedLane;其实也是Nolane，但是Ping的时候会markRootUpdated(root, lane)【给root.pendingLanes附加Lane】和ensureRootIsScheduled(root),然后调度更新的时候getNextLane会获取非suspenselane的lane就是ping的那次lane(因为没有suspenselane)
+// 注意2：如果是没有suspense组件，那么root.suspendedLanes会有Lane, root.pendingLanes为nolane(因为没有suspense，use会抛错导致状态为RootDidNotInComplete，然后给root.suspendedLanes添加lane给root.pendinglane移除lane)，并且不会进入到commitRoot(不会重置Pinglane和suspenselane)那么Ping的时候调用markRootPinged函数给root.pingdLanes附加root.suspendedLanes & pingedLane为上次更新的lane，以及root.pendinglane也会赋予这个lane，以及调用ensureRootIsScheduled(root)调度更新，那么接下来取根据getNextLane取得lane就为非suspense得lane，但是pingdLane里面有这个优先级 那么就用这个优先级去更新，到commitRoot得时候会重置root.pendingLane以及pingdLane以及suspenseLane
+```

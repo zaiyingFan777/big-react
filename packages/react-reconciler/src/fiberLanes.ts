@@ -68,6 +68,10 @@ export function markRootFinished(root: FiberRootNode, lane: Lane) {
 	// 取出最高优先级 a & -a => 1
 	// a移除最高优先级 a &= ~1 => a: 0
 	root.pendingLanes &= ~lane;
+
+	// 还需要重置suspenededLane、pingdLane
+	root.suspendedLanes = NoLanes;
+	root.pingdLanes = NoLanes;
 }
 
 // 将Lane(react)转为调度器的优先级
@@ -97,4 +101,50 @@ export function schedulerPriorityToLane(schedulerPriority: number): Lane {
 		return DefaultLane;
 	}
 	return NoLane;
+}
+
+// 标记root里面的某个lane被挂起了
+export function markRootSuspended(root: FiberRootNode, suspendedLane: Lane) {
+	// 将suspendedLane标记到root.suspendedLanes中
+	root.suspendedLanes |= suspendedLane;
+	// 从pendingLanes中移除，添加到root.suspendedLanes中
+	root.pendingLanes &= ~suspendedLane;
+}
+
+// 标记某个lane被ping了
+export function markRootPinged(root: FiberRootNode, pingedLane: Lane) {
+	// 将pingedLane标记到root.pingedLanes中
+	// 因为我们Ping的lane是suspendedLanes（被挂起的lane的子集）,只有先挂起再ping
+	root.pingdLanes |= root.suspendedLanes & pingedLane;
+}
+
+// 获取优先级中没有被挂起的或者被ping的 最高优先级lane，因为最高优先级可能被挂起了，所以需要获取再下一级的最高优先级
+export function getNextLane(root: FiberRootNode): Lane {
+	const pendingLanes = root.pendingLanes;
+
+	if (pendingLanes === NoLanes) {
+		return NoLane;
+	}
+
+	let nextLane = NoLane;
+	// 从pendingLane中取出没有被挂起的lanes
+	// 挂起的lane为root.suspendedLanes，没有被挂起的lane为~root.suspendedLanes
+	// 比如：0b0001 ~0b0001 => 0b1110
+	// 那么
+	//   0b0011
+	// & 0b1110
+	// = 0b0010 这样& ~0b0001 => 从0b0011中移除了0b0001 得到 0b0010
+	const suspendedLanes = pendingLanes & ~root.suspendedLanes;
+	if (suspendedLanes !== NoLanes) {
+		// 从没有被挂起的lanes中取出优先级最高的
+		nextLane = getHighestPriorityLane(suspendedLanes);
+	} else {
+		// 所有的lane都被挂起了，但是我们看看是否有被ping的lane
+		const pingedLanes = pendingLanes & root.pingdLanes;
+		if (pingedLanes !== NoLanes) {
+			// 如果pingdLanes不为空，在pingdlanes中取出最高优先级
+			nextLane = getHighestPriorityLane(pingedLanes);
+		}
+	}
+	return nextLane;
 }

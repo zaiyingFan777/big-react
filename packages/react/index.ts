@@ -5,8 +5,12 @@ import currentDispatcher, {
 } from './src/currentDispatcher';
 import currentBatchConfig from './src/currentBatchConfig';
 import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
+import { Usable } from 'shared/ReactTypes';
 // react 导出Fragment
-export { REACT_FRAGMENT_TYPE as Fragment } from 'shared/ReactSymbols';
+export {
+	REACT_FRAGMENT_TYPE as Fragment,
+	REACT_SUSPENSE_TYPE as Suspense // 这里导出后 就可以使用<Suspense></Suspense>了
+} from 'shared/ReactSymbols';
 // react导出 createContext
 export { createContext } from './src/context';
 export const useState: Dispatcher['useState'] = (initialState) => {
@@ -32,6 +36,11 @@ export const useRef: Dispatcher['useRef'] = (initialValue) => {
 export const useContext: Dispatcher['useContext'] = (context) => {
 	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useContext(context);
+};
+
+export const use: Dispatcher['use'] = <T>(useable: Usable<T>) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.use(useable);
 };
 
 // 内部数据共享层

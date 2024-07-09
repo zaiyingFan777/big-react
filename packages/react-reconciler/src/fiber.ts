@@ -2,20 +2,27 @@
  * @desc: 存放fiberNode的文件
  */
 
-import { Key, Props, ReactElementType, Ref } from 'shared/ReactTypes';
+import { Key, Props, ReactElementType, Ref, Wakeable } from 'shared/ReactTypes';
 import {
 	FunctionComponent,
 	HostComponent,
 	WorkTag,
 	Fragment,
-	ContextProvider
+	ContextProvider,
+	SuspenseComponent,
+	OffscreenComponent
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig'; // tsconfig.json中配置了
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
 import { CallbackNode } from 'scheduler';
-import { REACT_PROVIDER_TYPE } from 'shared/ReactSymbols';
+import { REACT_PROVIDER_TYPE, REACT_SUSPENSE_TYPE } from 'shared/ReactSymbols';
+
+export interface OffscreenProps {
+	mode: 'visible' | 'hidden';
+	children: any;
+}
 
 // jsx 经过babel编译为 jsx() React.createElement()，之后调用jsx()或React.createElement()[这里面是我们实现的jsx]会生成 ReactElement
 // ReactElement => FiberNode => DOM
@@ -61,7 +68,7 @@ export class FiberNode {
 	pendingProps: Props;
 	key: Key;
 	stateNode: any;
-	ref: Ref;
+	ref: Ref | null;
 
 	return: FiberNode | null;
 	sibling: FiberNode | null;
@@ -109,6 +116,8 @@ export class FiberNode {
 		// <ul>li * 3</ul> 第一个li index为0 第二个li index为1 第三个li index为2
 		this.index = 0;
 
+		this.ref = null;
+
 		// 作为工作单元
 		// 工作单元刚开始准备工作的时候的props
 		this.pendingProps = pendingProps;
@@ -154,12 +163,31 @@ export class FiberRootNode {
 	// 当前正在被调度的优先级
 	callbackPriority: Lane;
 
+	// WeakMap{promise: Set<Lane>}
+	// 键必须是对象：WeakMap 的键必须是对象，不能是原始类型（如字符串或数字）
+	// 弱引用：WeakMap 中的键是弱引用，这意味着如果一个键的对象没有被其他引用所引用，那么这个对象可以被垃圾回收器回收。这有助于防止内存泄漏。
+	// 不可迭代：与 Map 不同，WeakMap 不可迭代，这意味着你不能使用 for...of 循环或其他迭代器方法来遍历 WeakMap。
+	// 没有 size 属性：WeakMap 没有 size 属性，因为它的键是弱引用，所以它的大小可能会随时改变。
+	pingCache: WeakMap<Wakeable<any>, Set<Lane>> | null;
+
+	// 一次update造成了挂起（suspened的lane），那么把这个lane加入到suspendedLane中
+	// 过了一段时间wakeable 执行了ping，那么把ping的lane保存在pingdLanes，因此pingdlanes是suspenedlane的子集
+	// 代表当前root下所有被挂起的更新的集合
+	suspendedLanes: Lanes;
+	// 当前被挂起的更新里面被Ping的更新
+	pingdLanes: Lanes;
+
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
 		hostRootFiber.stateNode = this;
 		this.finishedWork = null;
 		this.pendingLanes = NoLanes;
+		// =========
+		// 挂起的Lane
+		this.suspendedLanes = NoLanes;
+		this.pingdLanes = NoLanes;
+		// =========
 		this.finishedLane = NoLane;
 
 		this.callbackNode = null;
@@ -169,6 +197,8 @@ export class FiberRootNode {
 			unmount: [],
 			update: []
 		};
+
+		this.pingCache = null;
 	}
 }
 
@@ -223,6 +253,8 @@ export function createFiberFromElement(element: ReactElementType) {
 	) {
 		// ctx.provider
 		fiberTag = ContextProvider;
+	} else if (type === REACT_SUSPENSE_TYPE) {
+		fiberTag = SuspenseComponent;
 	} else if (typeof type === 'function' && __DEV__) {
 		fiberTag = FunctionComponent;
 		// console.warn('未定义的type类型', element);
@@ -236,5 +268,13 @@ export function createFiberFromElement(element: ReactElementType) {
 export function createFiberFromFragment(elements: any[], key: Key): FiberNode {
 	const fiber = new FiberNode(Fragment, elements, key);
 
+	return fiber;
+}
+
+// 创建suspense中的offscreen的fiber
+export function createFiberFromOffscreen(
+	pendingProps: OffscreenProps
+): FiberNode {
+	const fiber = new FiberNode(OffscreenComponent, pendingProps, null);
 	return fiber;
 }
