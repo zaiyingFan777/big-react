@@ -31,9 +31,13 @@ import {
 	OffscreenComponent,
 	SuspenseComponent
 } from './workTags';
-import { mountChildFibers, reconcileChildFibers } from './childFibers';
-import { renderWithHooks } from './fiberHooks';
-import { Lane } from './fiberLanes';
+import {
+	cloneChildFibers,
+	mountChildFibers,
+	reconcileChildFibers
+} from './childFibers';
+import { bailoutHook, renderWithHooks } from './fiberHooks';
+import { includeSomeLanes, Lane, NoLanes } from './fiberLanes';
 import {
 	ChildDeletion,
 	DidCapture,
@@ -44,8 +48,78 @@ import {
 import { pushProvider } from './fiberContext';
 import { pushSuspenseHandler } from './suspenseContext';
 
+// 是否能命中bailout，默认能命中  false为能命中、true为不能命中
+let didReceiveUpdate = false;
+
+export function markWipReceiveUpdate() {
+	// 接受到更新就是不能命中bailout策略
+	didReceiveUpdate = true;
+}
+
 // 递归中的递阶段，renderLane本次更新的lane
 export const beginWork = (wip: FiberNode, renderLane: Lane) => {
+	// 每次开始都重置状态
+	didReceiveUpdate = false;
+
+	// bailout策略
+	// if (满足四要素) {
+	// 	return 复用的结果(bailout);
+	// }
+	// !!!如果没有命中四要素。也可能会命中bailout，state可能经过更新没有变化，如note.md的示例3
+	// fiber.updateQueue.pending 里面保存了组件状态的更新链表(环状) update->update 但是这样比较繁琐
+	// 因此我们给fiber新增fiber.lanes字段，这个字段保存了一个fiberNode[所有未执行更新对应的lane]
+	// 我们只需要查找fiber.lanes是不是NoLane就知道这个fiber是否存在未执行的更新
+
+	// 取到current
+	const current = wip.alternate;
+
+	if (current !== null) {
+		const oldProps = current.memoizedProps;
+		const newProps = wip.pendingProps;
+
+		// 四要素之 props type比较
+		// {num: 0, name: 'cpn2'}
+		// {num: 0, name: 'cpn2'}
+		// 笼统的讲只要上一轮触发bailout 那本次更新props全等(因为这次props通过克隆出来上次的props，就没有产生新的props对象)，否则就得依靠 Memo
+		// 从hostroot节点开始bailout 然后子节点就有机会进去bailout了
+		// 这个函数组件的父亲节点如果命中了bailout那么函数组件作为子节点是被克隆出来的那么他的props引用的对象应该还是之前的
+		// 所以子树命中性能优化的关键在于子树的根节点命中性能优化
+		if (oldProps !== newProps || current.type !== wip.type) {
+			// 不能命中
+			didReceiveUpdate = true;
+		} else {
+			// 比较state、context
+			// 判断fiber中未执行的更新包含本次的更新吗
+			const hasScheduledStateOrContext = checkScheduledUpdateOrContext(
+				current,
+				renderLane
+			);
+			if (!hasScheduledStateOrContext) {
+				// 四要素中的state、context不变
+				// 命中bailout
+				didReceiveUpdate = false;
+
+				switch (wip.tag) {
+					case ContextProvider:
+						// 因为context没变，那么我们只需要那之前的value来更新就可以了
+						const newValue = wip.memoizedProps.value;
+						const context = wip.type._context;
+						pushProvider(context, newValue);
+						break;
+
+					// todo suspense
+				}
+
+				// 如果wip满足了bailout以及子树也满足 那么return null Wip以及子树都不会被render，
+				// 如果只是wip满足，那么我们返回克隆的wip.child继续render
+				return bailouOnAlreadyFinishedWork(wip, renderLane);
+			}
+		}
+	}
+
+	// 重置更新，因为在后续的计算状态中会把跳过的更新再加到wip.lanes中
+	wip.lanes = NoLanes;
+
 	// 比较，返回子fiberNode
 	switch (wip.tag) {
 		case HostRoot:
@@ -80,6 +154,52 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	}
 	return null;
 };
+
+// 检查是否有调度Update或者context
+// 返回值true为本次更新在fiber的未更新的Lanes集合中，(state有可能会发生改变，会产生新的变化)那就说明不能命中性能优化
+// false说明本次更新没有在fiber的未更新的Lanes集合中，(state就不会发生改变，因为不会产生新的变化)那就说明命中了性能优化
+function checkScheduledUpdateOrContext(
+	current: FiberNode,
+	renderLane: Lane
+): boolean {
+	// 用current是因为beginwork的时候wip.lanes被清空了
+	const updateLanes = current.lanes;
+
+	// 判断fiber中未执行的更新中是否包含本次更新的renderLane，如果包含就存在更新
+	if (includeSomeLanes(updateLanes, renderLane)) {
+		return true;
+	}
+	return false;
+}
+
+// 能进bailouOnAlreadyFinishedWork这个方法说明wip已经满足bailout的四要素了，我们可以判断他的子树的优化程度
+// bailouOnAlreadyFinishedWork 返回(复用)上次更新的结果
+// renderLane本次更新的lane
+// 命中「性能优化」（bailout 策略）的组件可以不通过 reconcile 生成 wip.child，
+// 而是直接复用上次更新生成的 wip.child。bailout 策略存在于 beginWork 中
+function bailouOnAlreadyFinishedWork(wip: FiberNode, renderLane: Lane) {
+	// 判断优化程度
+	// 本次更新不在wip子树的未更新集合中，那就说明wip的子树不会产生新的state变化，因为这次更新不到他）
+	// 整颗子树都可以跳过render阶段
+	if (!includeSomeLanes(wip.childLanes, renderLane)) {
+		// wip的整颗子树都满足bailout
+		if (__DEV__) {
+			console.warn('bailout整棵子树', wip);
+		}
+		return null;
+	}
+
+	// 当前wip命中bailout。但是子树没有命中
+	if (__DEV__) {
+		console.warn('bailout一个fiber', wip);
+	}
+
+	// 克隆wip的child，
+	// 不能直接return wip.child因为child是上次更新的时候的引用,这里我们克隆一下
+	cloneChildFibers(wip);
+	// 返回克隆的子节点
+	return wip.child;
+}
 
 function updateSuspenseComponent(wip: FiberNode) {
 	const current = wip.alternate;
@@ -288,6 +408,7 @@ function updateContextProvider(wip: FiberNode) {
 	// 	// 指向Provider对应的context
 	// 	_context: context
 	// };
+	// fiber.type 比如host类型 那就是div span，如果是函数组件，那就是函数组件本身 如果是provider那就是ctx.Provider
 	const providerType = wip.type;
 	const context = providerType._context;
 	// const ctx = createContext(0);
@@ -342,6 +463,10 @@ function updateHostRoot(wip: FiberNode, renderLane: Lane) {
 	// 这里pending指向了updateQueue.shared.pending
 	// 然后又将updateQueue.shared.pending指向了null
 	updateQueue.shared.pending = null;
+
+	// 保存上次更新的结果
+	const prevChildren = wip.memoizedState;
+
 	// 计算状态
 	const { memoizedState } = processUpdateQueue(baseState, pending, renderLane);
 
@@ -349,8 +474,10 @@ function updateHostRoot(wip: FiberNode, renderLane: Lane) {
 	// 考虑RootDidNotComplete的情况，需要复用memoizedState
 	const current = wip.alternate;
 	if (current !== null) {
-		// 将memoizedState保存在current上，防止没有进入commit阶段,造成memoizedState丢失，因此再次render，可以从current中恢复出来memoizedState
-		current.memoizedState = memoizedState;
+		if (!current.memoizedState) {
+			// 将memoizedState保存在current上，防止没有进入commit阶段,造成memoizedState丢失，因此再次render，可以从current中恢复出来memoizedState
+			current.memoizedState = memoizedState;
+		}
 	}
 
 	// 将最新的状态赋值给wip，这里memoizedState是根组件<App/>jsx生成的ReactElement
@@ -358,6 +485,10 @@ function updateHostRoot(wip: FiberNode, renderLane: Lane) {
 
 	// render(<App/>) nextChildren为<App/>jsx生成的ReactElement
 	const nextChildren = wip.memoizedState;
+	// 是否命中bailout
+	if (prevChildren === nextChildren) {
+		return bailouOnAlreadyFinishedWork(wip, renderLane);
+	}
 	// 返回我们需要的App对应的fiberNode(子fiber)
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
@@ -393,6 +524,7 @@ function updateHostComponent(wip: FiberNode) {
 	const nextChildren = nextProps.children;
 	// 标记ref
 	markRef(wip.alternate, wip);
+	// 通过reconcile操作生成wip的child fiberNode
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }
@@ -480,6 +612,15 @@ function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
 	// }
 	// ============================
 	const nextChildren = renderWithHooks(wip, renderLane);
+
+	const current = wip.alternate;
+	if (current !== null && !didReceiveUpdate) {
+		// 重置操作
+		bailoutHook(wip, renderLane);
+		// 命中了bailout
+		return bailouOnAlreadyFinishedWork(wip, renderLane);
+	}
+
 	reconcileChildren(wip, nextChildren);
 	return wip.child;
 }

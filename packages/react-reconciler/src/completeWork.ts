@@ -19,6 +19,7 @@ import {
 import { NoFlags, Ref, Update, Visibility } from './fiberFlags';
 import { popProvider } from './fiberContext';
 import { popSuspenseHandler } from './suspenseContext';
+import { mergeLanes, NoLanes } from './fiberLanes';
 
 // completework标记更新
 function markUpdate(fiber: FiberNode) {
@@ -209,12 +210,19 @@ function appendAllChildren(parent: Container | Instance, wip: FiberNode) {
 function bubbleProperties(wip: FiberNode) {
 	let subtreeFlags = NoFlags;
 	let child = wip.child;
+	let newChildLanes = NoLanes;
 
 	while (child !== null) {
 		// 将子节点的subtreeFlags附加到wip的subtreeFlags上，这样当前节点的subtreeFlags就包含了子节点的subtreeFlags
 		subtreeFlags |= child.subtreeFlags;
 		// 还应该包含child的flags
 		subtreeFlags |= child.flags;
+
+		// 需要把child.lanes child.childLanes 附加到newChildLanes上
+		newChildLanes = mergeLanes(
+			newChildLanes,
+			mergeLanes(child.lanes, child.childLanes)
+		);
 
 		child.return = wip;
 		// 遍历child的兄弟节点
@@ -223,4 +231,5 @@ function bubbleProperties(wip: FiberNode) {
 
 	// 遍历完child以及child的兄弟节点后(这里每层只需要遍历所有的第一层子节点即可，因为子节点归上来的时候会收集子节点的子节点们的flags和subtreeFlags)，将subtreeFlags附加给wip
 	wip.subtreeFlags |= subtreeFlags;
+	wip.childLanes = newChildLanes;
 }

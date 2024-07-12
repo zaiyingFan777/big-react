@@ -473,3 +473,29 @@ function ChildReconciler(shouldTrackEffects: boolean) {
 export const reconcileChildFibers = ChildReconciler(true);
 // 不追踪
 export const mountChildFibers = ChildReconciler(false);
+
+// 克隆wip的子节点
+export function cloneChildFibers(wip: FiberNode) {
+	// child  sibling
+	if (wip.child === null) {
+		return;
+	}
+	// 上次更新的child wip.child本来指向的是current.child(创建wip的时候造成的原因)，因此我们通过current.child创建新的child 然后wip.child指向新的child
+	let currentChild = wip.child;
+	// 克隆新的child
+	let newChild = createWorkInProgress(currentChild, currentChild.pendingProps);
+	// 改变指向 指向新克隆的child
+	wip.child = newChild;
+	// 保持连接
+	newChild.return = wip;
+
+	// 检查是否有子节点的兄弟节点，有的话也继续克隆
+	while (currentChild.sibling !== null) {
+		currentChild = currentChild.sibling;
+		newChild = newChild.sibling = createWorkInProgress(
+			newChild,
+			newChild.pendingProps
+		);
+		newChild.return = wip;
+	}
+}

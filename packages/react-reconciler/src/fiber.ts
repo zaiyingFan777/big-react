@@ -93,6 +93,13 @@ export class FiberNode {
 	updateQueue: unknown;
 	deletions: FiberNode[] | null;
 
+	// 保存fiberNode中所有未执行更新对应的lane
+	// 跟root.pendingLanes什么区别呢？root.pendingLanes代表整个组件树下的所有fiber中存在的update对应的Lane的合集
+	// fiber.lanes代表了某一个fiebr的未执行的update对应的lane的合集
+	lanes: Lanes;
+	// 类比subtreeFlags，保存一个fiberNode子树中所有未执行更新对应的lane
+	childLanes: Lanes;
+
 	/**
 	 * pendingProps: 当前fiberNode有哪些props需要改变
 	 */
@@ -131,6 +138,9 @@ export class FiberNode {
 		this.flags = NoFlags;
 		this.subtreeFlags = NoFlags;
 		this.deletions = null;
+
+		this.lanes = NoLanes;
+		this.childLanes = NoLanes;
 	}
 }
 
@@ -208,6 +218,7 @@ export const createWorkInProgress = (
 	current: FiberNode,
 	pendingProps: Props
 ): FiberNode => {
+	// 反复引用同一个对象
 	let wip = current.alternate;
 
 	if (wip === null) {
@@ -235,6 +246,9 @@ export const createWorkInProgress = (
 	wip.memoizedProps = current.memoizedProps;
 	wip.memoizedState = current.memoizedState;
 	wip.ref = current.ref;
+
+	wip.lanes = current.lanes;
+	wip.childLanes = current.childLanes;
 
 	return wip;
 };

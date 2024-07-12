@@ -148,3 +148,13 @@ export function getNextLane(root: FiberRootNode): Lane {
 	}
 	return nextLane;
 }
+
+// 判断fiber中未执行的更新中是否包含本次更新的renderLane，如果包含就存在更新
+export function includeSomeLanes(set: Lanes, subset: Lane | Lanes): boolean {
+	return (set & subset) !== NoLanes;
+}
+
+// 从集合中移除某个子集或者某个子集合
+export function removeLanes(set: Lanes, subet: Lanes | Lane): Lanes {
+	return set & ~subet;
+}

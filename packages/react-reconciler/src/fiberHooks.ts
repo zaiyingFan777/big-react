@@ -12,11 +12,18 @@ import {
 } from './updateQueue';
 import { Action, ReactContext, Thenable, Usable } from 'shared/ReactTypes';
 import { scheduleUpdateOnFiber } from './workLoop';
-import { Lane, NoLane, requestUpdateLane } from './fiberLanes';
+import {
+	Lane,
+	mergeLanes,
+	NoLane,
+	removeLanes,
+	requestUpdateLane
+} from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
 import { HookHasEffect, Passive } from './hookEffectTags';
 import { REACT_CONTEXT_TYPE } from 'shared/ReactSymbols';
 import { trackUsedThenable } from './thenable';
+import { markWipReceiveUpdate } from './beginWork';
 
 const { currentDispatcher } = internals;
 
@@ -322,11 +329,33 @@ function updateState<State>(): [State, Dispatch<State>] {
 	}
 
 	if (baseQueue !== null) {
+		// 更新之前的状态
+		const prevState = hook.memoizedState;
 		const {
 			memoizedState,
 			baseQueue: newBaseQueue,
 			baseState: newBaseState
-		} = processUpdateQueue(baseState, baseQueue, renderLane);
+		} = processUpdateQueue(baseState, baseQueue, renderLane, (update) => {
+			// update为被跳过的update
+			// 被跳过的update的优先级
+			const skippedLane = update.lane;
+			// 找到当前正在render的fiber
+			const fiber = currentlyRenderingFiber as FiberNode;
+			// beginwork的时候将fiber.lanes重置为nolanes了
+			// 这里我们再加回去被跳过的lane
+			fiber.lanes = mergeLanes(fiber.lanes, skippedLane);
+		});
+
+		// NaN === Nan => false
+		// Object.is(NaN, NaN) => true
+		// +0 === -0 // true
+		// Object.is(+0, -0) // false
+		// 其他的跟全等没什么区别
+		if (!Object.is(prevState, memoizedState)) {
+			// 没有命中bailout state变了
+			markWipReceiveUpdate();
+		}
+
 		hook.memoizedState = memoizedState;
 		hook.baseState = newBaseState;
 		hook.baseQueue = newBaseQueue;
@@ -519,7 +548,10 @@ function dispatchSetState<State>(
 	const lane = requestUpdateLane();
 	// 创建更新
 	const update = createUpdate<State>(action, lane);
-	enqueueUpdate(updateQueue, update);
+	// 给fiber将本次更新的lane merge到 lanes
+	enqueueUpdate(updateQueue, update, fiber, lane);
+	// 触发更新的时候也需要将lane冒泡到父级爷爷级fiber.childLanes冒泡上去
+	// 因为触发更新enqueueUpdate的时候，已经把lane附加到fiber.lanes上了，因此只需要冒泡到parent.childLanes
 	scheduleUpdateOnFiber(fiber, lane);
 }
 
@@ -600,4 +632,15 @@ export function resetHooksOnUnwind(): void {
 	currentlyRenderingFiber = null;
 	currentHook = null;
 	workInProgressHook = null;
+}
+
+// 重置
+export function bailoutHook(wip: FiberNode, renderLane: Lane) {
+	const current = wip.alternate as FiberNode;
+	// 重置
+	wip.updateQueue = current.updateQueue;
+	// 移除useEffect相关
+	wip.flags &= ~PassiveEffect;
+	// 在lanes中移除本次更新的lane
+	current.lanes = removeLanes(current.lanes, renderLane);
 }

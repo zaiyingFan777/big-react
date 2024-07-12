@@ -651,6 +651,18 @@ export function isSubsetOfLanes(set: Lanes, subset: Lane) {
 
 1. 15.1 只有 Mount 的时候 dispatch 与 fiber 绑定，update 流程的 dispatch 并没有绑定 fiber，这点需要确定? 答案：因为新建或者复用 fibernode 时，会将 wip.memoizedState = current.memoizedState; 这时候函数组件的 hooks 链表是共用的一套，因此无论 dispatch 绑定到哪个 fiber 上，他们的 hook.updateQueue 是共用的一个对象，创建的更新进入队列，这样 cur 与 wip hook.updateQueue 的 shared.pending 保存的 update 链表都会更新。因此 cur 可能没有跟 dispatch bind，但是新的更新都会进入 cur fiber hook.updateQueue.shared.pending 中。然后计算的时候会根据 cur 状态和 updateQueue 中的 action 来进行计算赋值给 wip，然后 wip 又变成了新的 cur(状态就是根据上次 cur 和 action 计算出来的)
 
+```js
+var a = { pending: { state: 1 } };
+function dispatch() {
+	this.pending.state++;
+}
+a.dispatch = dispatch.bind(a);
+var b = {};
+b.pending = a.pending;
+b.dispatch = a.dispatch;
+// 然后调用a.dispatch()和b.dispatch() 都会改变a/b.pending.state因为 他俩引用的pending是同一个对象
+```
+
 ```
 var a = {
 	updateQueue: {
@@ -1082,5 +1094,244 @@ export function Cpn({ id, timeout }) {
 // 然后进行unwind流程找到最近的suspense(flag为ShouldCapture移除这个标记，添加DidCapture标记)，然后重新beginwork流程，展示fallback（挂起流程），等promise执行完重新触发新的!!!render流程，进入Cpn的beginwork这时候use返回值就是promise返回值了，
 // 可以进行新的render流程（非挂起的流程）
 // 注意：如果是有suspense组件，那么root.suspendedLanes 和 root.pingdLanes 都为Nolanes，那么Ping的时候调用markRootPinged函数给root.pingdLanes附加root.suspendedLanes & pingedLane;其实也是Nolane，但是Ping的时候会markRootUpdated(root, lane)【给root.pendingLanes附加Lane】和ensureRootIsScheduled(root),然后调度更新的时候getNextLane会获取非suspenselane的lane就是ping的那次lane(因为没有suspenselane)
-// 注意2：如果是没有suspense组件，那么root.suspendedLanes会有Lane, root.pendingLanes为nolane(因为没有suspense，use会抛错导致状态为RootDidNotInComplete，然后给root.suspendedLanes添加lane给root.pendinglane移除lane)，并且不会进入到commitRoot(不会重置Pinglane和suspenselane)那么Ping的时候调用markRootPinged函数给root.pingdLanes附加root.suspendedLanes & pingedLane为上次更新的lane，以及root.pendinglane也会赋予这个lane，以及调用ensureRootIsScheduled(root)调度更新，那么接下来取根据getNextLane取得lane就为非suspense得lane，但是pingdLane里面有这个优先级 那么就用这个优先级去更新，到commitRoot得时候会重置root.pendingLane以及pingdLane以及suspenseLane
+// 注意2：如果是没有suspense组件，那么root.suspendedLanes会有Lane, root.pendingLanes为nolane(因为没有suspense，use会抛错导致状态为RootDidNotInComplete，然后给root.suspendedLanes添加lane给root.pendinglane移除lane)，并且不会进入到commitRoot(不会重置Pinglane和suspenselane)那么Ping的时候调用markRootPinged函数给root.pingdLanes附加root.suspendedLanes & pingedLane为上次更新的lane，以及root.pendinglane也会赋予这个lane，以及调用ensureRootIsScheduled(root)调度更新，那么接下来取根据getNextLane取得lane就为非suspense得lane[nolane]，但是pingdLane里面有这个优先级 那么就用这个优先级去更新，到commitRoot得时候会重置root.pendingLane以及pingdLane以及suspenseLane
 ```
+
+## 21.性能优化策略
+
+1. 性能优化的一般思路。
+
+- 性能优化的一般思路：将「变化的部分」与「不变的部分」分离。什么是「变化的部分」？
+  - State
+  - Props
+  - Context
+- 命中「性能优化」的组件可以不通过 reconcile 生成 wip.child，而是直接复用上次更新生成的 wip.child。总结起来有两点：
+  - 性能优化的思路是将「变化的部分」与「不变的部分」分离
+  - 命中性能优化的组件的[子组件]（而不是他本身）不需要 render
+  - ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/7b125gllf7r5jn.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题')
+- 性能优化示例 1：
+
+```tsx
+function App() {
+	const [num, update] = useState(0);
+	console.log('App render ', num);
+
+	return (
+		<div>
+			<button onClick={() => update(num + 1)}>+1</button>
+			<p>num is : {num}</p>
+			<ExpensiveSubtree />
+		</div>
+	);
+}
+
+function ExpensiveSubtree() {
+	console.log('ExpensiveSubtree render');
+	return <div>i am child</div>;
+}
+// 初次加载打印
+// App render 0、ExpensiveSubtree render
+// 当点击button打印
+// App render 1、ExpensiveSubtree render
+// 可以看到每次点击按钮都会打印 app render、expensiveSubtree，因为App没有命中性能优化策略，我们需要将变化的部分拆分
+// ================分割线================
+
+function App() {
+	console.log('App render');
+
+	return (
+		<div>
+			<Num />
+			<ExpensiveSubtree />
+		</div>
+	);
+}
+// 将变化的部分拆分
+function Num() {
+	const [num, update] = useState(0);
+	return (
+		<>
+			<button onClick={() => update(num + 1)}>+1</button>
+			<p>num is : {num}</p>
+		</>
+	);
+}
+function ExpensiveSubtree() {
+	console.log('ExpensiveSubtree render');
+	return <div>i am child</div>;
+}
+
+// 初次加载打印
+// App render、ExpensiveSubtree render
+// 点击button打印
+// 返现App、ExpensiveSubtree都没打印
+// 这就是因为APP组件满足了性能优化策略，那么他的子组件ExpensiveSubtree不需要render了，为什么app组件也没有打印?因为APP的父组件HostRoot也满足了性能优化策略，作为子组件的App就不会render了
+```
+
+- 性能优化示例 2：
+
+```tsx
+// App组件的根节点div的title属性为num(state)
+function App() {
+	const [num, update] = useState(0);
+	console.log('App render ', num);
+
+	return (
+		<div title={num}>
+			<button onClick={() => update(num + 1)}>+1</button>
+			<p>num is : {num}</p>
+			<ExpensiveSubtree />
+		</div>
+	);
+}
+function ExpensiveSubtree() {
+	console.log('ExpensiveSubtree render');
+	return <div>i am child</div>;
+}
+// 加载时候的打印：
+// App render 0、ExpensiveSubtree render
+// 点击button打印：
+// App render 1、ExpensiveSubtree render
+
+// 将变化的部分拆分为Wrapper组件，将ExpensiveSubtree作为children传递给Wrapper组件
+// ================分割线================
+function App() {
+	console.log('App render ');
+
+	return (
+		<Wrapper>
+			<ExpensiveSubtree />
+		</Wrapper>
+	);
+}
+
+function Wrapper({ children }) {
+	const [num, update] = useState(0);
+	return (
+		<div title={num}>
+			<button onClick={() => update(num + 1)}>+1</button>
+			<p>num is : {num}</p>
+			{children}
+		</div>
+	);
+}
+
+function ExpensiveSubtree() {
+	console.log('ExpensiveSubtree render');
+	return <div>i am child</div>;
+}
+
+// mount时加载打印：
+// App render、ExpensiveSubtree render
+// 点击button打印：
+// App、ExpensiveSubtree都没有打印(render)
+// 因为ExpensiveSubtree组件作为props传递到了Wrapper组件，而产生这个props是在APP的return返回值里产生的。
+// 当App组件满足性能优化策略，这个返回值（app中的return）就是复用上次更新的结果，所以说ExpensiveSubtree就是复用上次更新的结果，到Wrapper的props的children就是复用上次返回的结果，children是没有变的，所以说expen是不需要render的。app组件满足了性能优化策略，是因为app的父组件Hostroot也满足了性能优化策略，所以App组件(作为子组件)也不需要render。
+```
+
+- 性能优化示例 3：
+
+```tsx
+function App() {
+	const [num, update] = useState(0);
+	console.log('App render ', num);
+
+	return (
+		<div onClick={() => update(1)}>
+			<Cpn />
+		</div>
+	);
+}
+
+function Cpn() {
+	console.log('cpn render');
+	return <div>cpn</div>;
+}
+// mount时打印：
+// App render 0 cpn render
+// 第一次点击打印：
+// App render 1 cpn render
+// 第二次点击打印：
+// App render 1
+// app命中了性能优化(state没有再变化)，子组件cpn组件就不会再render了
+
+// 目前的源码调试：
+// mount
+// 1.beginwork的时候wip为hostRootFiber的时候的current是存在的（updateContainer时候创建的），oldProps = current.memoizedProps(null)跟const newProps = wip.pendingProps;({}) null !== {}，
+// 因此不能进入bailout，然后进入updateHostRoot函数，他的current不为Null（上面解释了），prevChildren（null） === nextChildren(App的reactElement)不相等进入不了优化逻辑。执行完reconcile过程生成wip.child(wip app)，
+// 然后fiber.memoizedProps = fiber.pendingProps; 这时候wip hostfiberroot的memoizedProps = pendingProps = {}。
+// 2.beginwork的时候wip为app的时候current为null，执行app函数，生成children为div的reactElement,因为是Mount肯定wip没有current，进入不了bailout，然后reconcile app child[当然在reconcile 函数组件没有current不会进入bailout]，得到wip.child (wip div)
+// 然后beginwork完毕后， fiber.memoizedProps = fiber.pendingProps ={}
+// 3.beginwork的时候wip为div，因为wip的current为null，进入不了bailout，然后reconcile wip div 的child(Cpn的reactElement)，得到wip.child (wip Cpn)，然后beginwork后 fiber.memoizedProps = fiber.pendingProps =
+// {children: Cpn的reactElement, onClick: xxx}
+// 4.beginwork的时候wip为Cpn，因为wip.current为null，不会进入bailout，然后reconcile wip Cpn 的child(div的reactElement)，得到wip.child (wip div)，[当然在reconcile 函数组件没有current不会进入bailout]然后beginwork后
+// fiber.memoizedProps = fiber.pendingProps = {}
+// 5.beginwork的时候wip为div, 因为wip.current为null，不会进入bailout，然后reconcile wip div 的child(span的reactElement)，得到wip.child (wip hostText)，然后beginwork后 fiber.memoizedProps = fiber.pendingProps =
+// {children: "cpn"}
+// 6.beginwork的时候wip为hostText, 因为wip.current为null，不会进入bailout，然后reconcile wip hostText 的child(null)，得到wip.child (null)，然后beginwork后 fiber.memoizedProps = fiber.pendingProps = {content: "cpn"}
+
+// 点击第一次。
+// 1.beginwork的时候wip为hostRootFiber的时候的current是存在的（updateContainer时候创建的），因为进入到renderRoot后会执行prepareFreshStack->workInProgress =
+// createWorkInProgress(root.current, {});那么wip hostRootFiber的pendingProps是新的{}，因此比较oldProps和newProps的时候不相等，不会进入bailout，然后updateHostRoot，
+// 进行bailout比较prevChildren（计算前的wip.memoizedState） === nextChildren(计算后的wip.memoizedState) 相等，进入bailout，因为此次更新的lane与wip(hostRootFiber).childLanes
+// 有交集，因此不能bailout hostRootfiber的整颗子树，因此就bailout一个wip(hostRootFiber，这时候他的child还是复用的current hostRootFiber的child)，然后开始cloneChildFibers(wip)，因为wip.child是createWorkInProgress时候复用的current
+// 的child，我们在这里称为currentChild，然后将currentChild来创建wip的child(复用current的属性)，在createWorkInProgress中wip为null,因此重新创建fiberNode，然后执行完上面的，在bailouOnAlreadyFinishedWork末尾会返回克隆的hostRootFiber的child
+// (app，app.child暂时指向的current的child)，fiber.memoizedProps = fiber.pendingProps = {} 【这个阶段省去了reconcileChildren阶段直接clone了current.child生成wip app】
+// 2.beginwork的时候wip为app的时候，因为wip是根据current克隆出来的，并且（oldProps !== newProps(false) || current.type !== wip.type）为false，进入了bailout阶段，不满足四要素，因为current.lanes与本次更有有交集，所以不能直接进入bailout，然后进入
+// updateFunctionComponent -> renderWithHooks -> div的reactElement -> current !== null(true) && !didReceiveUpdate(false)，无法进入bailout，-> reconcileChildren(app(wip), div(reactElement))，-> wip div -> fiber.memoizedProps = fiber.pendingProps = {}
+// 3.beginwork的时候wip为div，因为current存在，oldProps = current.memoizedProps与newProps = wip.pendingProps 不一致（因为wip.pendingProps是app renderWithHooks重新生成的对象（div reactElement）），所以没有bailout，->updateHostComponent
+// -> reconcileChildren -> wip.child(wip Cpn, pendingProps是上次新生成的divReactElement的props，导致进入4.两次props不一致), fiber.memoizedProps = fiber.pendingProps = {children: Cpn的reactElement, onClick: xxx}
+// 4.beginwork的时候wip为Cpn，因为current存在，oldProps = current.memoizedProps与newProps = wip.pendingProps 不一致（wip.pendingProps上次3有解释），所以没有bailout，-> updateHostComponent -> renderWithHooks -> cpn下的div的reactElement
+// -> (current !== null && !didReceiveUpdate(true))为false，不能进入bailout, -> reconcileChildren -> wip.child(wip div props是renderWithHooks新生成的reactElement)
+// 5. beginwork的时候wip为div，因为current存在，但是oldProps与newProps(4步骤新生成的reactElement的props)不等，-> updateHostComponent -> reconcileChildren -> wip.child(hostText)
+// 6.beginwork的时候wip为hostText, 因为wip.current不为null，但是oldPros与newProps不相等（步骤4重新生成的div reactElement的对象）不会进入bailout，然后reconcile wip hostText 的child(null)，得到wip.child (null)，然后beginwork后 fiber.memoizedProps = fiber.pendingProps = {content: "cpn"}
+
+// 点击第二次
+// 创建hostRootFiber wip的时候pendingProps是{}，改变了
+// 1.beginwork的时候wip为hostRootFiber的时候的current是存在的, 但是oldProps与pendingProps是不同的，见上述，不满足bailout，-> updateHostRoot -> (prevChildren === nextChildren同点击第一次) 进入bailout -> 因为wip.childlanes跟本次renderlane
+// 有交集说明子树有更新，那么不满足wip一整棵树的bailout，-> bailout一个fiber(wip hostRootFiber) -> cloneChildFibers -> createWorkInProgress(currentChild, currentChild.pendingProps) 复用之前的current.child的属性，-> wip.child(wip app)【这个阶段省去了reconcileChildren阶段直接clone了current.child生成wip app】
+// 2.beginwork的时候wip为app，因为wip是根据current克隆出来的，并且（oldProps !== newProps(false) || current.type !== wip.type）为false，进入了bailout阶段，不满足四要素，因为current.lanes与本次更有有交集，所以不能直接进入bailout，然后进入
+// updateFunctionComponent -> renderWithHooks -> div的reactElement  -> current !== null(true) && !didReceiveUpdate(true)，状态没变进入bailout -> bailouOnAlreadyFinishedWork -> wip app.childlanes为0 本次更新的Lane为0，那么优化wip整颗子树，然后进入其他流程 【这个阶段省去了reconcile app以及子树的阶段】
+
+// export function cloneChildFibers(wip) {
+// 	if (wip.child === null) {
+// 		return;
+// 	}
+// 	let currentChild = wip.child;
+// 	let newChild = createWorkInProgress(currentChild, currentChild.pendingProps);
+// 	wip.child = newChild;
+// 	newChild.return = wip;
+// 	while (currentChild.sibling !== null) {
+// 		currentChild = currentChild.sibling;
+// 		newChild = newChild.sibling = createWorkInProgress(newChild, newChild.pendingProps);
+// 		newChild.return = wip;
+// 	}
+// }
+```
+
+- 对于上述例子，存在两种性能优化策略：
+
+  - bailout 策略：减少不必要的子组件 render
+  - eagerState 策略：不必要的更新，没必要开启后续调度流程
+
+2. bailout 策略
+
+- 命中「性能优化」（bailout 策略）的组件可以不通过 reconcile 生成 wip.child，而是直接复用上次更新生成的 wip.child。bailout 策略存在于 beginWork 中。bailout 四要素：
+
+  - 1 props 不变: 比较 props 变化是通过「全等比较」，使用 React.memo 后会变为「浅比较」
+  - 2 state 不变: 两种情况可能造成 state 不变：
+    - 不存在 update（对应示例 1 的改造后的 app）
+    - 存在 update，但计算得出的 state 没变化（对应示例 3）
+  - 3 context 不变
+  - 4 type 不变
+    - 如果 Div 变为 P，返回值肯定变了
+      ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/1yd7ajllf7r5jw.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+  - 为了判断「bailout 四要素」中的「state 不变」，需要判断当前 fiber 是否存在未执行的 update。
+
+3. fiber.lanes 工作流程
+
+- 作用：保存一个 fiberNode 中「所有未执行更新对应的 lane」
+- 延伸功能：fiber.childLanes(类似于 subtreeFlags)，保存一个 fiberNode 子树中「所有未执行更新对应的 lane」
+  - 产生：enqueueUpdate
+  - 消费：beginWork
+  - 未消费时的重置：processUpdateQueue

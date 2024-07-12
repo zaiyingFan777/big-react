@@ -1,6 +1,7 @@
 import { Dispatch } from 'react/src/currentDispatcher';
 import { Action } from 'shared/ReactTypes';
-import { isSubsetOfLanes, Lane, NoLane } from './fiberLanes';
+import { isSubsetOfLanes, Lane, mergeLanes, NoLane } from './fiberLanes';
+import { FiberNode } from './fiber';
 
 // update数据结构Type
 // this.setState({xx:1})
@@ -45,7 +46,9 @@ export const createUpdateQueue = <State>(): UpdateQueue<State> => {
 // 向UpdateQueue中添加Update
 export const enqueueUpdate = <State>(
 	updateQueue: UpdateQueue<State>,
-	update: Update<State>
+	update: Update<State>,
+	fiber: FiberNode,
+	lane: Lane
 ) => {
 	// 覆盖操作
 	// updateQueue.shared.pending = update;
@@ -75,13 +78,23 @@ export const enqueueUpdate = <State>(
 	// !!!pending始终指向最后插入的update
 	// pending.next指向第一个插入的
 	updateQueue.shared.pending = update;
+
+	// 将本次更新的lane合并到fiber的lanes上
+	fiber.lanes = mergeLanes(fiber.lanes, lane);
+	// 找到current，给current的lanes字段也添加上lane。
+	// 因为消费Update是wip的update，防止出现问题的时候，wip需要重建 我们到时候可以从current中恢复
+	const alternate = fiber.alternate;
+	if (alternate !== null) {
+		alternate.lanes = mergeLanes(alternate.lanes, lane);
+	}
 };
 
 // 消费UpdateQueue中的Update的方法
 export const processUpdateQueue = <State>(
 	baseState: State, // 初始的状态
 	pendingUpdate: Update<State> | null, // 要被消费的状态，应该为baseQueue以及原来的pendingUpdate合并的结果
-	renderLane: Lane
+	renderLane: Lane,
+	onSkipUpdate?: <State>(update: Update<State>) => void // 当我们有Update因为优先级不够被跳过 这个函数就会执行
 ): {
 	memoizedState: State; // memoizedState 是上次更新计算的最终 state
 	baseState: State; // baseState 是本次更新参与计算的初始 state(最后一个没被跳过的 update 计算后的结果)
@@ -111,6 +124,9 @@ export const processUpdateQueue = <State>(
 			if (!isSubsetOfLanes(renderLane, updateLane)) {
 				// 优先级不够 被跳过
 				const clone = createUpdate(pending.action, pending.lane);
+
+				onSkipUpdate?.(clone);
+
 				// 是不是第一个被跳过的
 				if (newBaseQueueFirst === null) {
 					// 第一个被跳过的update

@@ -80,7 +80,7 @@ export function scheduleUpdateOnFiber(fiber: FiberNode, lane: Lane) {
 	// 无论哪种情况我们需要从fiber向上遍历找到fiberRootNode
 
 	// 得到fiberRootNode
-	const root = markUpdateFromFiberToRoot(fiber);
+	const root = markUpdateLaneFromFiberToRoot(fiber, lane);
 	// 将lane记录到fiberRootNode的pendingLanes上
 	markRootUpdated(root, lane);
 	// 选出一个lane去更新
@@ -196,12 +196,20 @@ export function markRootUpdated(root: FiberRootNode, lane: Lane) {
 }
 
 // 从发起更新处的组件向上找到fiberRootNode
-export function markUpdateFromFiberToRoot(fiber: FiberNode) {
+export function markUpdateLaneFromFiberToRoot(fiber: FiberNode, lane: Lane) {
 	let node = fiber;
 	let parent = node.return;
 
 	// 普通fiber有return指向父节点，但是hostRootNode没有return，只有stateNode指向fiberRootNode
 	while (parent !== null) {
+		// 因为触发更新enqueueUpdate的时候，已经把lane附加到fiber.lanes上了，因此只需要冒泡到parent.childLanes
+		// 触发更新需要把lane放到父级fiber.childLanes上 一步一步冒泡上去
+		parent.childLanes = mergeLanes(parent.childLanes, lane);
+		const alternate = parent.alternate;
+		if (alternate !== null) {
+			alternate.childLanes = mergeLanes(alternate.childLanes, lane);
+		}
+
 		// parent !== null，说明是个普通节点
 		// 向上遍历，将parent赋值给node 将爸爸赋值给当前
 		node = parent;
