@@ -10,17 +10,24 @@ export interface Update<State> {
 	action: Action<State>;
 	lane: Lane;
 	next: Update<any> | null;
+	// 新加的值，第一次进来的update计算后的结果eagerState，后续再计算可以基于eagerState
+	hasEagerState: boolean;
+	eagerState: State | null;
 }
 
 // 创建Update实例的方法
 export const createUpdate = <State>(
 	action: Action<State>,
-	lane: Lane
+	lane: Lane,
+	hasEagerState = false,
+	eagerState = null
 ): Update<State> => {
 	return {
 		action,
 		lane,
-		next: null
+		next: null,
+		hasEagerState,
+		eagerState
 	};
 };
 
@@ -81,13 +88,25 @@ export const enqueueUpdate = <State>(
 
 	// 将本次更新的lane合并到fiber的lanes上
 	fiber.lanes = mergeLanes(fiber.lanes, lane);
-	// 找到current，给current的lanes字段也添加上lane。
+	// !!!找到current，给current的lanes字段也添加上lane。
 	// 因为消费Update是wip的update，防止出现问题的时候，wip需要重建 我们到时候可以从current中恢复
 	const alternate = fiber.alternate;
 	if (alternate !== null) {
 		alternate.lanes = mergeLanes(alternate.lanes, lane);
 	}
 };
+
+export function basicStateReducer<State>(state: State, action: Action<State>) {
+	if (action instanceof Function) {
+		// baseState 1 update (x) => 4x -> memoizedState 1*4 = 4
+		// newState = action(baseState);
+		return action(state);
+	} else {
+		// baseState 1 update 2 -> memoizedState 2
+		// newState = action;
+		return action;
+	}
+}
 
 // 消费UpdateQueue中的Update的方法
 export const processUpdateQueue = <State>(
@@ -162,12 +181,11 @@ export const processUpdateQueue = <State>(
 				}
 
 				const action = pending.action;
-				if (action instanceof Function) {
-					// baseState 1 update (x) => 4x -> memoizedState 1*4 = 4
-					newState = action(baseState);
+				if (pending.eagerState) {
+					// 第一次计算的结果记录到eagerState上，我们计算的时候可以复用
+					newState = pending.eagerState;
 				} else {
-					// baseState 1 update 2 -> memoizedState 2
-					newState = action;
+					newState = basicStateReducer(baseState, action);
 				}
 			}
 			// 遍历下一个update

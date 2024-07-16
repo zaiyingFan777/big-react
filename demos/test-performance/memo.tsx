@@ -25,3 +25,20 @@ function Child() {
 	console.log('Child render');
 	return <p>i am child</p>;
 }
+
+// 初始打印：
+// App render  0
+// render  cpn1
+// Child render
+// render  cpn2
+// Child render
+
+// 第一次点击
+// App render  1
+// render  cpn1
+// Child render
+
+// 第2次点击
+// App render  2
+// render  cpn1
+// Child render

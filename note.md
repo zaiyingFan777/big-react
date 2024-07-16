@@ -1254,6 +1254,7 @@ function Cpn() {
 // 第二次点击打印：
 // App render 1
 // app命中了性能优化(state没有再变化)，子组件cpn组件就不会再render了
+// !!!react原版是app不render cpn也不render，因为命中了eagerState
 
 // 目前的源码调试：
 // mount
@@ -1307,6 +1308,8 @@ function Cpn() {
 // 		newChild.return = wip;
 // 	}
 // }
+
+// 点击第三次 什么也不打印，命中eagerState
 ```
 
 - 对于上述例子，存在两种性能优化策略：
@@ -1335,3 +1338,19 @@ function Cpn() {
   - 产生：enqueueUpdate
   - 消费：beginWork
   - 未消费时的重置：processUpdateQueue
+
+4. eagerState 策略
+
+- 状态更新前后没有变化，那么没有必要触发更新，为此需要做：
+  - 1.计算更新后的状态
+  - 2.与更新前的状态做比较
+- 通常情况下，「根据 update 计算 state」发生在 beginWork，而我们需要在「触发更新时」计算状态：
+  ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/pnl06ollf7r5jl.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+  只有满足「当前 fiberNode 没有其他更新」才尝试进入 eagerState 策略。
+
+5. 实现 React.memo
+
+- 作用：让「props 的全等比较」变为「props 的浅比较」
+
+- 本质：在子组件与父组件之间增加一个 MemoComponent，MemoComponent 通过「props 的浅比较」命中 bailout 策略
+  ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/yhx5mpllf7r5js.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')

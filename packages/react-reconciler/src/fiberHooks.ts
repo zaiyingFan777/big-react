@@ -3,6 +3,7 @@ import { FiberNode } from './fiber';
 import { Dispatch, Dispatcher } from 'react/src/currentDispatcher';
 import currentBatchConfig from 'react/src/currentBatchConfig';
 import {
+	basicStateReducer,
 	createUpdate,
 	createUpdateQueue,
 	enqueueUpdate,
@@ -16,6 +17,7 @@ import {
 	Lane,
 	mergeLanes,
 	NoLane,
+	NoLanes,
 	removeLanes,
 	requestUpdateLane
 } from './fiberLanes';
@@ -65,9 +67,15 @@ type EffectDeps = any[] | null;
 // 函数组件的UpdateQueue
 export interface FCUpdateQueue<State> extends UpdateQueue<State> {
 	lastEffect: Effect | null; // 指向effect链表的最后一个，那么lastEffect.next就指向第一个effect
+	// 这里新增字段，为了eagerStrate，dispatch提前计算state方便取值
+	lastRenderedState: State; // 其实就是memoizedState
 }
 
-export function renderWithHooks(wip: FiberNode, lane: Lane) {
+export function renderWithHooks(
+	wip: FiberNode,
+	Component: FiberNode['type'],
+	lane: Lane
+) {
 	// 将wip赋值给当前正在render的currentlyRenderingFiber
 	currentlyRenderingFiber = wip;
 	// 重置 wip.memoizedState保存的是hooks链表
@@ -92,8 +100,7 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 		// mount
 		currentDispatcher.current = HooksDispatcherOnMount;
 	}
-
-	const Component = wip.type;
+	// const Component = wip.type; // 作为参数传递，兼容memo因为MemoComponent fiber.type.type为Component
 	const props = wip.pendingProps;
 	// fc render
 	const children = Component(props);
@@ -270,7 +277,7 @@ function updateState<State>(): [State, Dispatch<State>] {
 	const hook = updateWorkInProgressHook();
 
 	// 计算新state的逻辑
-	const queue = hook.updateQueue as UpdateQueue<State>;
+	const queue = hook.updateQueue as FCUpdateQueue<State>;
 	// baseState 是本次更新参与计算的初始 state
 	const baseState = hook.baseState;
 
@@ -359,6 +366,7 @@ function updateState<State>(): [State, Dispatch<State>] {
 		hook.memoizedState = memoizedState;
 		hook.baseState = newBaseState;
 		hook.baseQueue = newBaseQueue;
+		queue.lastRenderedState = memoizedState;
 	}
 
 	return [hook.memoizedState, queue.dispatch as Dispatch<State>];
@@ -455,7 +463,7 @@ function mountState<State>(
 		memoizedState = initialState;
 	}
 
-	const queue = createUpdateQueue<State>();
+	const queue = createFCUpdateQueue<State>();
 	hook.updateQueue = queue;
 	hook.memoizedState = memoizedState;
 	// 因为所有的计算都是根据baseState开始的，memoizedState存储的计算后的状态
@@ -477,6 +485,7 @@ function mountState<State>(
 	// @ts-ignore
 	const dispatch = dispatchSetState.bind(null, currentlyRenderingFiber, queue);
 	queue.dispatch = dispatch;
+	queue.lastRenderedState = memoizedState;
 	return [memoizedState, dispatch];
 }
 
@@ -541,13 +550,53 @@ function updateRef<T>(initialValue: T): { current: T } {
 // dispatch方法  从当前触发更新的fiebrNode调度更新(从当前fiebr找到fiberRootNode)
 function dispatchSetState<State>(
 	fiber: FiberNode,
-	updateQueue: UpdateQueue<State>,
+	updateQueue: FCUpdateQueue<State>,
 	action: Action<State>
 ) {
 	// 取出当前触发条件下的lane
 	const lane = requestUpdateLane();
 	// 创建更新
 	const update = createUpdate<State>(action, lane);
+
+	// 当前触发的u3
+	// 1.fiber上有Update未执行：u0 -> u1 -> u2 -> u3(链表中有可能因为优先级不足导致被跳过的update)
+	// 2.fiber上无update未执行：u3 我们直接基于u3进行计算状态
+	// 上述的2我们可以前置进行计算，不用放在render上
+	// if (满足eager策略) {
+	//  满足了eagerState策略就不要进入调度更新阶段了，（不需要更新）
+	// 	return;
+	// }
+	// eagerState策略
+	// 获取current
+	const current = fiber.alternate;
+	// fiber上没有未进行的更新、current === null首屏渲染、非首屏渲染，current上也没有未进行的更新(current上会保存未进行的lanes)
+	if (
+		fiber.lanes === NoLanes &&
+		(current === null || current.lanes === NoLanes)
+	) {
+		// 当前产生的update是这个fiebr的第一个Update
+		// 1.更新前的状态
+		const currentState = updateQueue.lastRenderedState;
+		// 2.计算状态的方法 急迫计算出来的状态前置到触发更新时候计算
+		// 比如fiebr: u0(eagerState) u1 u2
+		// 因为eagerState是第一次进来计算的，那么我们后续再有u1 u2等update进来 那么u0总是第一个
+		// 因此我们可以基于eagerState的值来计算u1 u2，可以保留一下eagerState(Update上)
+		const eagerState = basicStateReducer(currentState, action);
+		update.hasEagerState = true;
+		update.eagerState = eagerState;
+
+		if (Object.is(currentState, eagerState)) {
+			// 虽然命中了eagerState，但是我们依然要将本次update放入updateQueue中，因为我们后续基于update
+			// 计算state的时候，还是要将当前eagerState对应的update参与计算，但是lane设置为noLane
+			enqueueUpdate(updateQueue, update, fiber, NoLane);
+			// 命中eagerState
+			if (__DEV__) {
+				console.warn('命中eagerState', fiber);
+			}
+			return;
+		}
+	}
+
 	// 给fiber将本次更新的lane merge到 lanes
 	enqueueUpdate(updateQueue, update, fiber, lane);
 	// 触发更新的时候也需要将lane冒泡到父级爷爷级fiber.childLanes冒泡上去

@@ -28,6 +28,7 @@ import {
 	HostComponent,
 	HostRoot,
 	HostText,
+	MemoComponent,
 	OffscreenComponent,
 	SuspenseComponent
 } from './workTags';
@@ -47,6 +48,7 @@ import {
 } from './fiberFlags';
 import { pushProvider } from './fiberContext';
 import { pushSuspenseHandler } from './suspenseContext';
+import { shallowEqual } from 'shared/shallowEquals';
 
 // 是否能命中bailout，默认能命中  false为能命中、true为不能命中
 let didReceiveUpdate = false;
@@ -79,11 +81,23 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 
 		// 四要素之 props type比较
 		// {num: 0, name: 'cpn2'}
-		// {num: 0, name: 'cpn2'}
+		// {num: 0, name: 'cpn2'} 这个对象跟上面的对象表面一样但是引用的不是一个对象，因此不能===(全等)，但是浅比较是可以的???
 		// 笼统的讲只要上一轮触发bailout 那本次更新props全等(因为这次props通过克隆出来上次的props，就没有产生新的props对象)，否则就得依靠 Memo
 		// 从hostroot节点开始bailout 然后子节点就有机会进去bailout了
 		// 这个函数组件的父亲节点如果命中了bailout那么函数组件作为子节点是被克隆出来的那么他的props引用的对象应该还是之前的
 		// 所以子树命中性能优化的关键在于子树的根节点命中性能优化
+		// 父组件命中bailout后，子组件是被复用的，因此oldProps === newProps，如果比如函数组件没有被复用，那么他会重新生成jsx->reactElement(新的RE会有新的props，然后赋值给wip.pendingProps)
+		// 比如：jsx->RE，没有命中bailout会导致函数执行重新生成新的RE，props都是全新的对象{title: "123",children: "111"}
+		// function App(){
+		// 	return <div title="123">111</div>
+		// }
+		// import { jsx as _jsx } from "react/jsx-runtime";
+		// function App() {
+		// 	return /*#__PURE__*/_jsx("div", {
+		// 		title: "123",
+		// 		children: "111"
+		// 	});
+		// }
 		if (oldProps !== newProps || current.type !== wip.type) {
 			// 不能命中
 			didReceiveUpdate = true;
@@ -136,7 +150,7 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 			// <p>唱跳Rap</p>
 			return null; // 递阶段完事，开始归阶段
 		case FunctionComponent:
-			return updateFunctionComponent(wip, renderLane); // 递阶段完事，开始归阶段
+			return updateFunctionComponent(wip, wip.type, renderLane); // 递阶段完事，开始归阶段
 		case Fragment:
 			return updateFragment(wip);
 		case ContextProvider:
@@ -146,6 +160,8 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 			return updateSuspenseComponent(wip);
 		case OffscreenComponent:
 			return updateOffscreenComponent(wip);
+		case MemoComponent:
+			return updateMemoComponent(wip, renderLane);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型', wip.tag);
@@ -155,6 +171,43 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	return null;
 };
 
+// Memo的beginwork
+function updateMemoComponent(
+	wip: FiberNode,
+	renderLane: Lane
+): FiberNode | null {
+	// bailout四要素
+	// props浅比较
+	const current = wip.alternate;
+	const nextProps = wip.pendingProps;
+	// memo包裹的函数组件(见react包下的memo.ts)
+	const Component = wip.type.type;
+
+	if (current !== null) {
+		// 获取current的props
+		const prevProps = current.memoizedProps;
+		// 浅比较props
+		if (shallowEqual(prevProps, nextProps) && current.ref === wip.ref) {
+			// 浅比较相等，并且ref前后也没有变，不需要更新
+			didReceiveUpdate = false;
+			// 将之前的props赋值给wip的pendingProps，没变化
+			wip.pendingProps = prevProps;
+			// 比较state context
+			if (!checkScheduledUpdateOrContext(current, renderLane)) {
+				// 满足四要素
+				// checkScheduledUpdateOrContext返回false，那么就是检查current.lanes是否跟renderlane有交集
+				// 如果本次更新跟current.lanes(fiber中还未进行的更新)没有交集，那就说明current在本次更新中没有要更新的，那就可以复用
+				// 然后将current.lanes赋值给wip.lanes(因为beginwork初期的时候会清空wip.lanes)
+				wip.lanes = current.lanes;
+				// bailout
+				return bailouOnAlreadyFinishedWork(wip, renderLane);
+			}
+		}
+	}
+	// 没有满足四要素
+	return updateFunctionComponent(wip, Component, renderLane);
+}
+
 // 检查是否有调度Update或者context
 // 返回值true为本次更新在fiber的未更新的Lanes集合中，(state有可能会发生改变，会产生新的变化)那就说明不能命中性能优化
 // false说明本次更新没有在fiber的未更新的Lanes集合中，(state就不会发生改变，因为不会产生新的变化)那就说明命中了性能优化
@@ -163,6 +216,7 @@ function checkScheduledUpdateOrContext(
 	renderLane: Lane
 ): boolean {
 	// 用current是因为beginwork的时候wip.lanes被清空了
+	// 产生update的时候，dispatch里面enqueueUpdate，enqueueUpdate中给fiber.lanes中添加Lane，并且添加到current.lanes中(如果fiber有Lanes)
 	const updateLanes = current.lanes;
 
 	// 判断fiber中未执行的更新中是否包含本次更新的renderLane，如果包含就存在更新
@@ -530,7 +584,11 @@ function updateHostComponent(wip: FiberNode) {
 }
 
 // FunctionComponent的beginwork流程
-function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
+function updateFunctionComponent(
+	wip: FiberNode,
+	Component: FiberNode['type'],
+	renderLane: Lane
+) {
 	// 流程：普通jsx像下面的 babel帮我们生成jsx(div,{jsx(span)})然后再执行我们的jsx方法得到ReactElement，然后开始ReactDOM.createRoot(root).render(jsx(ReactElement));方法的流程
 	// const jsx = (
 	// 	<div><span>big-react</span></div>
@@ -611,7 +669,7 @@ function updateFunctionComponent(wip: FiberNode, renderLane: Lane) {
 	// 	});
 	// }
 	// ============================
-	const nextChildren = renderWithHooks(wip, renderLane);
+	const nextChildren = renderWithHooks(wip, Component, renderLane);
 
 	const current = wip.alternate;
 	if (current !== null && !didReceiveUpdate) {

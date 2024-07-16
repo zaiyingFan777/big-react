@@ -13,6 +13,8 @@ export {
 } from 'shared/ReactSymbols';
 // react导出 createContext
 export { createContext } from './src/context';
+// react导出 memo
+export { memo } from './src/memo';
 export const useState: Dispatcher['useState'] = (initialState) => {
 	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.useState(initialState); // 得到[num, setNum]
