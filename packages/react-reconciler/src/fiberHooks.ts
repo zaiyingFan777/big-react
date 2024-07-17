@@ -39,9 +39,11 @@ let currentHook: Hook | null = null;
 let renderLane: Lane = NoLane;
 
 // fc component fiber.memoizedState -> (useState -> useEffect)的链表
-// 每个hook(useState)中的类型为Hook类型里面又有memoizedState字段，Hook保存的是useState或useEffect(effect)自身的值，
+// 每个hook(useState)中的类型为Hook类型里面又有memoizedState字段，Hook保存的是useState或useEffect(Effect)自身的值，
 // 对于useTransition来说，memoizedState存储的是startTransition函数。
 // 对于useRef来说，memoizedState存储的是ref数据结构
+// 对于useCallback来说，memoizedState存储的是[callback(被缓存的函数), nextDeps(依赖项)]
+// 对于useMemo来说，memoizedState存储的是[nextValue, nextDeps];
 interface Hook {
 	memoizedState: any;
 	updateQueue: unknown;
@@ -57,12 +59,12 @@ export interface Effect {
 	tag: Flags;
 	create: EffectCallback | void; // 1.mount时 2.依赖变化时，触发create回调
 	destroy: EffectCallback | void; // 函数组件销毁时，触发回调
-	deps: EffectDeps;
+	deps: HookDeps;
 	next: Effect | null; // 环状链表，指向下一个effect(hook.memoizedState)，不需要遍历hook链表就可以找到下一个effect相关hook数据
 }
 
 type EffectCallback = () => void;
-type EffectDeps = any[] | null;
+export type HookDeps = any[] | null;
 
 // 函数组件的UpdateQueue
 export interface FCUpdateQueue<State> extends UpdateQueue<State> {
@@ -120,7 +122,9 @@ const HooksDispatcherOnMount: Dispatcher = {
 	useTransition: mountTransition,
 	useRef: mountRef,
 	useContext: readContext,
-	use
+	use,
+	useMemo: mountMemo,
+	useCallback: mountCallback
 };
 
 const HooksDispatcherOnUpdate: Dispatcher = {
@@ -129,10 +133,12 @@ const HooksDispatcherOnUpdate: Dispatcher = {
 	useTransition: updateTransition,
 	useRef: updateRef,
 	useContext: readContext,
-	use
+	use,
+	useMemo: updateMemo,
+	useCallback: updateCallback
 };
 
-function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+function mountEffect(create: EffectCallback | void, deps: HookDeps | void) {
 	// 找到当前useEffect对应的hook数据
 	const hook = mountWorkInProgressHook();
 	const nextDeps = deps === undefined ? null : deps;
@@ -148,7 +154,7 @@ function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
 	);
 }
 
-function updateEffect(create: EffectCallback | void, deps: EffectDeps | void) {
+function updateEffect(create: EffectCallback | void, deps: HookDeps | void) {
 	// 找到当前useEffect对应的hook数据
 	const hook = updateWorkInProgressHook();
 	const nextDeps = deps === undefined ? null : deps;
@@ -179,7 +185,7 @@ function updateEffect(create: EffectCallback | void, deps: EffectDeps | void) {
 }
 
 // 浅比较依赖
-function areHookInputsEqual(nextDeps: EffectDeps, prevDeps: EffectDeps) {
+function areHookInputsEqual(nextDeps: HookDeps, prevDeps: HookDeps) {
 	if (prevDeps === null || nextDeps === null) {
 		// 比较失败，比如useEffect第二个参数没有执行，因此每次都得执行useEffect
 		return false;
@@ -218,7 +224,7 @@ function pushEffect(
 	hookFlags: Flags,
 	create: EffectCallback | void,
 	destroy: EffectCallback | void,
-	deps: EffectDeps
+	deps: HookDeps
 ): Effect {
 	const effect: Effect = {
 		tag: hookFlags,
@@ -692,4 +698,71 @@ export function bailoutHook(wip: FiberNode, renderLane: Lane) {
 	wip.flags &= ~PassiveEffect;
 	// 在lanes中移除本次更新的lane
 	current.lanes = removeLanes(current.lanes, renderLane);
+}
+
+// useCallback
+// mountCallback
+function mountCallback<T>(callback: T, deps: HookDeps | undefined) {
+	const hook = mountWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	hook.memoizedState = [callback, nextDeps];
+	return callback;
+}
+
+// useCallback(() => {}, [xxx])
+// updateCallback
+function updateCallback<T>(callback: T, deps: HookDeps | undefined) {
+	const hook = updateWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	// 获取之前的状态
+	const prevState = hook.memoizedState;
+
+	// 判断依赖有没有变化
+	if (nextDeps !== null) {
+		const prevDeps = prevState[1];
+		// 浅比较 简单类型变化了就变化了，引用类型对象还是同一个对象就相等，如果对象变了比如setState({x:1})或者setState((prev) => {return {...prev, x:1}})这两种情况计算出来的state都是新的对象
+		// 如果是setState((prev) => {prev.x += 1; return prev;});这种改变同一个对象并且会触发bailout 因为计算完状态前后状态是一个对象，会造成页面不更新，当然这种情况就属于前后引用的对象是同一个
+		// 没有发生变化。
+		if (areHookInputsEqual(nextDeps, prevDeps)) {
+			// 依赖项没有变化，返回之前保存的callback即可
+			return prevState[0];
+		}
+	}
+	// 依赖项发生变化，我们缓存新的callback
+	hook.memoizedState = [callback, nextDeps];
+	return callback;
+}
+
+// useMemo(() => xxx, []) 缓存变量
+// mountMemo
+function mountMemo<T>(nextCreate: () => T, deps: HookDeps | undefined) {
+	const hook = mountWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	// 取到要缓存的值
+	const nextValue = nextCreate();
+	hook.memoizedState = [nextValue, nextDeps];
+	return nextValue;
+}
+// updateMemo
+function updateMemo<T>(nextCreate: () => T, deps: HookDeps | undefined) {
+	const hook = updateWorkInProgressHook();
+	const nextDeps = deps === undefined ? null : deps;
+	// 获取之前的状态
+	const prevState = hook.memoizedState;
+
+	// 判断依赖有没有变化
+	if (nextDeps !== null) {
+		const prevDeps = prevState[1];
+		// 浅比较 简单类型变化了就变化了，引用类型对象还是同一个对象就相等，如果对象变了比如setState({x:1})或者setState((prev) => {return {...prev, x:1}})这两种情况计算出来的state都是新的对象
+		// 如果是setState((prev) => {prev.x += 1; return prev;});这种改变同一个对象并且会触发bailout 因为计算完状态前后状态是一个对象，会造成页面不更新，当然这种情况就属于前后引用的对象是同一个
+		// 没有发生变化。
+		if (areHookInputsEqual(nextDeps, prevDeps)) {
+			// 依赖项没有变化，返回之前保存的callback即可
+			return prevState[0];
+		}
+	}
+	// 依赖项发生变化，我们缓存新的value
+	const nextValue = nextCreate();
+	hook.memoizedState = [nextValue, nextDeps];
+	return nextValue;
 }

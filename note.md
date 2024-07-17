@@ -1354,3 +1354,9 @@ function Cpn() {
 
 - 本质：在子组件与父组件之间增加一个 MemoComponent，MemoComponent 通过「props 的浅比较」命中 bailout 策略
   ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/yhx5mpllf7r5js.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+
+6. 实现 useMemo、useCallback
+
+- useCallback：缓存函数
+- useMemo：缓存变量（特殊用法：手动 bailout，见/demos/useMemo.tsx）
+- useCallback、useMemo 常规用法就是：配合 memo 例如/demos/Hook.tsx 将 useCallback 的缓存作为 memo 的 props，然后 memo 浅比较发现 props 没变化。

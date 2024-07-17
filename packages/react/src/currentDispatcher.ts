@@ -1,5 +1,6 @@
 // 内部数据共享层，当前使用的Hooks集合
 
+import { HookDeps } from 'react-reconciler/src/fiberHooks';
 import { Action, ReactContext, Usable } from 'shared/ReactTypes';
 
 // react开发者 => import { useState } from 'react' => 内部数据共享层--当前使用的Hooks集合 => Reconciler(mount时：useState、update时：useState、Hook上下文：useState)
@@ -7,11 +8,13 @@ import { Action, ReactContext, Usable } from 'shared/ReactTypes';
 export interface Dispatcher {
 	// const [num, setNum] = useState(0 | (num) => num + 1)
 	useState: <T>(initialState: (() => T) | T) => [T, Dispatch<T>];
-	useEffect: (callback: () => void | void, deps: any[] | void) => void;
+	useEffect: (callback: () => void | void, deps: HookDeps | undefined) => void;
 	useTransition: () => [boolean, (callback: () => void) => void];
 	useRef: <T>(initialValue: T) => { current: T };
 	useContext: <T>(context: ReactContext<T>) => T;
 	use: <T>(usable: Usable<T>) => T;
+	useMemo: <T>(nextCreate: () => T, deps: HookDeps | undefined) => T;
+	useCallback: <T>(callback: T, deps: HookDeps | undefined) => T;
 }
 
 export type Dispatch<State> = (action: Action<State>) => void;

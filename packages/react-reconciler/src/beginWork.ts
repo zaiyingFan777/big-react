@@ -171,6 +171,51 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 	return null;
 };
 
+// 例如test中的memo.tsx fiberNode: type: {$$typeof: REACT_MEMO_TYPE, type: function, compare: null} pendingProps: {num: 0, name: 'cpn1'}
+// 编译前
+// function App() {
+// 	const [num, update] = useState(0);
+// 	console.log('App render ', num);
+// 	return (
+// 		<div onClick={() => update(num + 1)}>
+// 			<Cpn num={num} name={'cpn1'} />
+// 			<Cpn num={0} name={'cpn2'} />
+// 		</div>
+// 	);
+// }
+
+// const Cpn = memo(function ({ num, name }) {
+// 	return (
+// 		<div>
+// 			{name}: {num}
+// 		</div>
+// 	);
+// });
+// 编译后
+// import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+// function App() {
+// 	const [num, update] = useState(0);
+// 	console.log('App render ', num);
+// 	return /*#__PURE__*/_jsxs("div", {
+// 		onClick: () => update(num + 1),
+// 		children: [/*#__PURE__*/_jsx(Cpn, { // !!!!Cpn(为memo执行后的结果) => {$$typeof: REACT_MEMO_TYPE, type: function, compare: null}
+// 			num: num,
+// 			name: 'cpn1'
+// 		}), /*#__PURE__*/_jsx(Cpn, {
+// 			num: 0,
+// 			name: 'cpn2'
+// 		})]
+// 	});
+// }
+// const Cpn = memo(function ({
+// 	num,
+// 	name
+// }) {
+// 	return /*#__PURE__*/_jsxs("div", {
+// 		children: [name, ": ", num]
+// 	});
+// })
+
 // Memo的beginwork
 function updateMemoComponent(
 	wip: FiberNode,

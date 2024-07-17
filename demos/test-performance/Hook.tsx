@@ -27,3 +27,12 @@ function Child() {
 	console.log('Child render');
 	return <p>i am child</p>;
 }
+
+// mount
+// App render 0
+// Cpn render
+// Child render
+
+// 第一次点击
+// App render 1
+// bailout  memo fiber的整颗子树 因为memo fiber 浅比较 props: {onClick}没有变化 因为useCallback缓存了函数

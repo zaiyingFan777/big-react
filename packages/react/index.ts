@@ -6,6 +6,7 @@ import currentDispatcher, {
 import currentBatchConfig from './src/currentBatchConfig';
 import { jsx, jsxDEV, isValidElement as isValidElementFn } from './src/jsx';
 import { Usable } from 'shared/ReactTypes';
+import { HookDeps } from 'react-reconciler/src/fiberHooks';
 // react 导出Fragment
 export {
 	REACT_FRAGMENT_TYPE as Fragment,
@@ -40,9 +41,23 @@ export const useContext: Dispatcher['useContext'] = (context) => {
 	return dispatcher.useContext(context);
 };
 
-export const use: Dispatcher['use'] = <T>(useable: Usable<T>) => {
+// export const use: Dispatcher['use'] = <T>(useable: Usable<T>) => {
+// 	const dispatcher = resolveDispatcher() as Dispatcher;
+// 	return dispatcher.use(useable);
+// };
+export const use: Dispatcher['use'] = (useable) => {
 	const dispatcher = resolveDispatcher() as Dispatcher;
 	return dispatcher.use(useable);
+};
+
+export const useMemo: Dispatcher['useMemo'] = (nextCreate, deps) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.useMemo(nextCreate, deps);
+};
+
+export const useCallback: Dispatcher['useCallback'] = (callback, deps) => {
+	const dispatcher = resolveDispatcher() as Dispatcher;
+	return dispatcher.useCallback(callback, deps);
 };
 
 // 内部数据共享层
