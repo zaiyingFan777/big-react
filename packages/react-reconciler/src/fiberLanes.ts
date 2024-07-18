@@ -43,11 +43,34 @@ export function requestUpdateLane(): Lane {
 	return lane;
 }
 
+/**
+ * -lanes
+ * 如何取反补码
+ * 3的二进制是0011（这里我们使用四位二进制表示，因为3是一个小于8的数）。
+ * 接下来，要找到-3的二进制表示，我们需要执行以下步骤：
+ * 取反：将3的二进制表示中的所有位取反（0变成1，1变成0）。
+ * 0011 -> 1100
+ * 加1：在取反的基础上加1，得到补码。
+ * 1100 + 0001 = 1101
+ * 因此，-3的四位二进制补码表示是1101。
+ *
+ *  0b0011
+ * &0b1101
+ * =0b0001
+ */
+
 // 调度阶段选出一个lane，去调度(目前是选择最靠右的那一位)
 export function getHighestPriorityLane(lanes: Lanes): Lane {
 	// 1.lanes: 0b0011 我们需要返回0b0001 位数越靠右，优先级越高
 	// 2.0b0110，我们返回0b0010
 	// 3.0b0000 & -0b0000 => 0b0000 root.pendingLanes如果没有优先级，则取出来的是NoLane
+
+	// a = 0b0011
+	// b = -a = 0b1110
+	// 因此a & -a
+	//   0b0011
+	// & 0b1101
+	// => 1
 	return lanes & -lanes;
 }
 
@@ -61,6 +84,33 @@ export function isSubsetOfLanes(set: Lanes, subset: Lane) {
 	// 让a为：var a = 0b0011，这时候(a & b) === b; => true
 	return (set & subset) === subset;
 }
+
+/**
+ * ~lane
+ * 在JavaScript中，~是按位非运算符（Bitwise NOT operator）。按位非运算符会对操作数的每个位执行逻辑非操作，即将所有的1变成0，所有的0变成1。
+ * 比如：var a = 0b0011; 我们想移除1
+ * a &= ~1
+ *   0b0011
+ * & 0b1110
+ * = 0b0010
+ *  3:00000000000000000000000000000011
+ * -3:11111111111111111111111111111100
+ * -1:11111111111111111111111111111110
+ */
+
+/**
+ * 按位异或 ^
+ * 在JavaScript中，^ 是按位异或运算符（Bitwise XOR operator）。按位异或运算符对两个操作数的位进行逐位比较，如果两个比较的位不同，则结果位为1；如果相同，则结果位为0。
+ * 0 ^ a = a
+ * a ^ a = 0
+ *  0b0000 0
+ * ^0b0001 1
+ * =0b0001 1
+ *
+ *  0b0001 1
+ * ^0b0001 1
+ * =0b0000 0
+ */
 
 // 在root.pendingLanes中移除本次更新的lane
 export function markRootFinished(root: FiberRootNode, lane: Lane) {

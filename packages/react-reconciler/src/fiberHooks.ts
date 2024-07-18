@@ -26,8 +26,15 @@ import { HookHasEffect, Passive } from './hookEffectTags';
 import { REACT_CONTEXT_TYPE } from 'shared/ReactSymbols';
 import { trackUsedThenable } from './thenable';
 import { markWipReceiveUpdate } from './beginWork';
+import { readContext as readContextOrigin } from './fiberContext';
 
 const { currentDispatcher } = internals;
+
+// 再实现一个readContext
+function readContext<Value>(context: ReactContext<Value>): Value {
+	const consumer = currentlyRenderingFiber as FiberNode;
+	return readContextOrigin(consumer, context);
+}
 
 // 当前正在render的fiber。
 let currentlyRenderingFiber: FiberNode | null = null;
@@ -636,20 +643,6 @@ function mountWorkInProgressHook(): Hook {
 	return workInProgressHook;
 }
 
-// const x = useContext(ctx)
-function readContext<T>(context: ReactContext<T>): T {
-	// 消费者为当前正在工作的fiebr
-	const consumer = currentlyRenderingFiber;
-	if (consumer === null) {
-		// 脱离了函数组件的使用
-		// throw new Error('useContext must be inside a function component');
-		throw new Error('只能在函数组件中调用useContext');
-	}
-
-	const value = context._currentValue;
-	return value;
-}
-
 // use接受两个参数
 // 1.Thenable promise.ther
 // function fetchData(id, timeout) {
@@ -723,6 +716,7 @@ function updateCallback<T>(callback: T, deps: HookDeps | undefined) {
 		// 浅比较 简单类型变化了就变化了，引用类型对象还是同一个对象就相等，如果对象变了比如setState({x:1})或者setState((prev) => {return {...prev, x:1}})这两种情况计算出来的state都是新的对象
 		// 如果是setState((prev) => {prev.x += 1; return prev;});这种改变同一个对象并且会触发bailout 因为计算完状态前后状态是一个对象，会造成页面不更新，当然这种情况就属于前后引用的对象是同一个
 		// 没有发生变化。
+		// 比如同一对象{x:1} => {x:2} 在processUpdateQueue中计算完两次state Object.is 就认为state没有变因此不会触发新的更新，可能就进入了bailout，导致页面上{xx.x}不会变化
 		if (areHookInputsEqual(nextDeps, prevDeps)) {
 			// 依赖项没有变化，返回之前保存的callback即可
 			return prevState[0];

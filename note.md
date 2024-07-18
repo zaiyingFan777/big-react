@@ -1360,3 +1360,55 @@ function Cpn() {
 - useCallback：缓存函数
 - useMemo：缓存变量（特殊用法：手动 bailout，见/demos/useMemo.tsx）
 - useCallback、useMemo 常规用法就是：配合 memo 例如/demos/Hook.tsx 将 useCallback 的缓存作为 memo 的 props，然后 memo 浅比较发现 props 没变化。
+
+7. context 兼容 bailout 的实现
+
+- Q：不触发 context 更新的原因？
+
+- A：命中了 bailout 策略（见/demos/test-performance/Context.tsx 中的注释）
+
+- Q：在 context 场景下，如何才能不命中 bailout 策略？
+
+- A：在 context 场景下，可以提前标记从 ctx.Provider 到 consumer 之间的 childLanes
+  ![示例图片](https://wechatapppro-1252524126.cdn.xiaoeknow.com/appjiz2zqrn2142/image/b_u_622f2474a891b_tuQ1ZmhR/bxx1uxllf7r5jn.png?imageView2/2/h/10000/q/80|imageMogr2/ignore-error/1 '示例图片标题2')
+
+```tsx
+export default function App() {
+	const [num, update] = useState(0);
+	console.log('App render ', num);
+	return (
+		<ctx.Provider value={num}>
+			<div
+				onClick={() => {
+					update(1);
+				}}
+			>
+				{/* 1.mount beginwork的时候给函数组件fiber增加dependencies字段里面存放了它依赖的context(单向链表) useContext */}
+				{/* 2.value变了(通过触发更新导致的value变化)，从provider向下遍历找到消费了的ctx的组件Child，给Child的lanes附加上对应的lane，再往上遍历找到provider，沿途遇到的组件都附加lane到childLanes */}
+				{/* 3.这样虽然沿途组件即使命中了bailout也不会bailout整颗子树，因为childLanes有优先级 */}
+				<Cpn />
+			</div>
+		</ctx.Provider>
+	);
+}
+
+const Cpn = memo(function () {
+	console.log('Cpn render');
+	return (
+		<div>
+			<Child />
+		</div>
+	);
+});
+
+function Child() {
+	console.log('Child render');
+	const val = useContext(ctx);
+
+	return <div>ctx: {val}</div>;
+}
+```
+
+- 注意：比较 state 变化的第二种情况「有新的 update，但是经过计算后发现 state 没变」，在标记 didReceiveUpdate 时对于 context 也同样适用。
+
+## 22.选出一批优先级，在计算 state 的时候 Update 链表需要跟这一批优先级去比较看是否有交集。

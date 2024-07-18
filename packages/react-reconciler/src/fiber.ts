@@ -23,6 +23,7 @@ import {
 	REACT_PROVIDER_TYPE,
 	REACT_SUSPENSE_TYPE
 } from 'shared/ReactSymbols';
+import { ContextItem } from './fiberContext';
 
 export interface OffscreenProps {
 	mode: 'visible' | 'hidden';
@@ -67,6 +68,11 @@ export interface OffscreenProps {
 // 2.如果没有子节点，遍历兄弟节点
 // 如果一个组件要被卸载，那么他的子孙节点的componentWillUnmount执行顺序应该是，孙、子、当前组件（递归的过程）。
 
+interface FiberDependencies<Value> {
+	firstContext: ContextItem<Value> | null; // 此函数组件依赖的context单向链表
+	lanes: Lanes; // 某个更新，导致context.value变化，那么就把这次更新的lane添加到这，然后如果我们某次更新通过查看这个fiberDependencies的lanes是否有这次更新，有的话给fiber.lanes标记上
+}
+
 export class FiberNode {
 	type: any;
 	tag: WorkTag;
@@ -104,6 +110,8 @@ export class FiberNode {
 	lanes: Lanes;
 	// 类比subtreeFlags，保存一个fiberNode子树中所有未执行更新对应的lane
 	childLanes: Lanes;
+	// 保存了当前fiber所依赖的context集合
+	dependencies: FiberDependencies<any> | null;
 
 	/**
 	 * pendingProps: 当前fiberNode有哪些props需要改变
@@ -146,6 +154,8 @@ export class FiberNode {
 
 		this.lanes = NoLanes;
 		this.childLanes = NoLanes;
+
+		this.dependencies = null;
 	}
 }
 
@@ -254,6 +264,16 @@ export const createWorkInProgress = (
 
 	wip.lanes = current.lanes;
 	wip.childLanes = current.childLanes;
+
+	const currentDeps = current.dependencies;
+	// 拷贝一份赋值给wip
+	wip.dependencies =
+		currentDeps === null
+			? null
+			: {
+					lanes: currentDeps.lanes,
+					firstContext: currentDeps.firstContext
+			  };
 
 	return wip;
 };

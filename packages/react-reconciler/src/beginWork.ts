@@ -46,7 +46,11 @@ import {
 	Placement,
 	Ref
 } from './fiberFlags';
-import { pushProvider } from './fiberContext';
+import {
+	prepareToReadContext,
+	propagateContextChange,
+	pushProvider
+} from './fiberContext';
 import { pushSuspenseHandler } from './suspenseContext';
 import { shallowEqual } from 'shared/shallowEquals';
 
@@ -154,7 +158,7 @@ export const beginWork = (wip: FiberNode, renderLane: Lane) => {
 		case Fragment:
 			return updateFragment(wip);
 		case ContextProvider:
-			return updateContextProvider(wip);
+			return updateContextProvider(wip, renderLane);
 		case SuspenseComponent:
 			// beginwork SuspenseComponent return offscreen或者return fragment(fallback) 进入归阶段也是从offscreen或者fallback归到suspense
 			return updateSuspenseComponent(wip);
@@ -501,7 +505,7 @@ function updateOffscreenComponent(wip: FiberNode) {
 	return wip.child;
 }
 
-function updateContextProvider(wip: FiberNode) {
+function updateContextProvider(wip: FiberNode, renderLane: Lane) {
 	// context.Provider = {
 	// 	$$typeof: REACT_PROVIDER_TYPE,
 	// 	// 指向Provider对应的context
@@ -533,9 +537,29 @@ function updateContextProvider(wip: FiberNode) {
 	// 	});
 	// }
 	const newProps = wip.pendingProps;
+	const oldProps = wip.memoizedProps;
+	// 新的value
+	const newValue = newProps.value;
 
 	// 更新context._currentValue
 	pushProvider(context, newProps.value);
+
+	if (oldProps !== null) {
+		const oldValue = oldProps.value;
+
+		// 新老value没有变化，children也没有变（说明children是被复用得）
+		if (
+			Object.is(oldValue, newValue) &&
+			oldProps.children === newProps.children
+		) {
+			// 命中了context得bailout得逻辑
+			return bailouOnAlreadyFinishedWork(wip, renderLane);
+		} else {
+			// context value变化了
+			// 那么我们从ctx.Provider向下寻找依赖了的变化了的context的函数组件
+			propagateContextChange(wip, context, renderLane);
+		}
+	}
 
 	const nextChildren = newProps.children;
 	reconcileChildren(wip, nextChildren);
@@ -634,6 +658,9 @@ function updateFunctionComponent(
 	Component: FiberNode['type'],
 	renderLane: Lane
 ) {
+	// 执行函数之前需要重置lastContextDep全局变量，因为新的函数要重新生成一条依赖的context链表
+	prepareToReadContext(wip, renderLane);
+
 	// 流程：普通jsx像下面的 babel帮我们生成jsx(div,{jsx(span)})然后再执行我们的jsx方法得到ReactElement，然后开始ReactDOM.createRoot(root).render(jsx(ReactElement));方法的流程
 	// const jsx = (
 	// 	<div><span>big-react</span></div>
