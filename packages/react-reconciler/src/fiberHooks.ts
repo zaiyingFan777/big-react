@@ -411,6 +411,12 @@ function updateWorkInProgressHook(): Hook {
 		nextCurrentHook = currentHook.next;
 	}
 
+	// 如果再次进入updateWorkInProgressHook那就说明我们函数组件又遇到了一个Hook，
+	// mount: u1
+	// update: u1 u2
+	// update时逻辑
+	// u1进来currentHook为null，然后找到current fiber的memoizedState，赋值给nextCurrentHook(指向u1)，然后currentHook指向u1
+	// u2进来currentHook为u1，然后nextCurrentHook指向u1.next，那么为null，所以多出来一个hook u2，因为既然就来updateWorkInProgressHook那就说明这是函数组件遇到了hook
 	if (nextCurrentHook === null) {
 		// mount/update  u1 u2 u3
 		// update        u1 u2 u3 u4
