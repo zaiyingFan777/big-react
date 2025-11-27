@@ -70,3 +70,39 @@ packages:
 ```
 packages: ['packages/*'] 表示：项目根目录下的packages文件夹中，所有直接子目录都被识别为独立的子包（package）。
 例如：packages/react、packages/utils、packages/cli 等目录会被视为一个个独立的 npm 包。
+
+## 2.实现JSX
+
+### 2.1 React项目结构：
+
+- react（宿主环境无关的公用方法）
+- react-reconciler（协调器的实现，宿主环境无关）
+- 各种宿主环境的包
+- shared（公用辅助方法，宿主环境无关）
+
+JSX转换属于react包。
+
+```zsh
+# 创建react
+cd packages/ && mkdir react
+cd react/
+# 初始化 package.json
+pnpm init
+```
+```json
+{
+  "name": "react",
+  "version": "1.0.0",
+  "description": "react公用方法",
+  // "main": "index.js", // * 本包的入口文件，main对应的是commonjs规范
+  "module": "index.ts", // rollup原生支持esm，因此我们不需要上面的commonjs的main，在这里添加module的入口
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+```
+最后在react包下创建index.ts(入口文件)
+
+### 2.2 JSX转换是什么
+
+
