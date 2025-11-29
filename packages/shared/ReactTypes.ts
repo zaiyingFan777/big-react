@@ -12,3 +12,6 @@ export interface ReactElementType {
 	ref: Ref;
 	__mark: string;
 }
+
+// action
+export type Action<State> = State | ((prevState: State) => State);
