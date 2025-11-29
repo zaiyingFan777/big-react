@@ -80,7 +80,7 @@ packages: ['packages/*'] 表示：项目根目录下的packages文件夹中，�
 - 各种宿主环境的包
 - shared（公用辅助方法，宿主环境无关）
 
-JSX转换属于react包。<strong>(注意：在packages包中创建任何包，都需要进入该包内pnpm init)</strong><br/>
+JSX转换属于react包。<strong>(注意：在packages包中创建任何包，都需要进入该包内pnpm init，然后比如react依赖了shared的包，那么在react包下执行 pnpm i)</strong><br/>
 比如react包使用了shared包，那么需要将shared包添加到react包中package.json中的dependencies中
 ```json
 {
@@ -196,3 +196,97 @@ console.log(s3 === s4); // true（全局共享）
 | 唯一性              | 始终唯一（即使 key 相同）  | 相同 key 对应同一个 Symbol |
 | 全局注册表          | 不注册                    | 注册到全局                |
 | 跨模块共享          | 不支持                    | 支持                      |
+
+## 3.实现Reconciler架构
+reconciler是React核心逻辑所在的模块，中文名叫协调器。协调（reconcile）就是diff算法的意思。
+
+### 3.1 reconciler有什么用？
+
+jQuery工作原理（过程驱动）：
+
+![alt text](./assets/reconciler-1.png)
+
+前端框架结构与工作原理（状态驱动）：
+
+- react：reconciler
+- vue: renderer
+
+![alt text](./assets/reconciler-2.png)
+
+react:
+- 消费JSX
+- react没有编译优化，vue有编译优化
+- 开放通用API供不同宿主环境使用
+
+### 3.2 核心模块消费JSX的过程
+
+核心模块操作的数据结构是？当前已知的数据结构：ReactElement<br/>
+ReactElement如果作为核心模块操作的数据结构，存在的问题：
+- 无法表达节点之间的关系
+- 字段有限，不好拓展（比如：无法表达状态）
+
+所以，需要一种新的数据结构，他的特点：<br/>
+- 介于ReactElement与真实UI节点之间
+- 能够表达节点之间的关系
+- 方便拓展（不仅作为数据存储单元，也能作为工作单元）
+
+这就是FiberNode（虚拟DOM在React中的实现），vue中虚拟DOM叫VNode。
+
+当前我们了解的节点类型：
+
+- JSX
+- ReactElement
+- FiberNode
+- DOMElement
+
+### 3.3 reconciler的工作方式
+对于同一个节点，比较其ReactElement与fiberNode，生成子fiberNode。并根据比较的结果生成不同标记（插入、删除、移动......），对应不同宿主环境API的执行。
+
+![alt text](./assets/reconciler-3.png)
+
+比如，挂载```<div></div>```
+
+```js
+// React Element <div></div>
+jsx("div")
+// 对应fiberNode
+null
+// 生成子fiberNode（无）
+// 对应标记，插入div
+Placement
+```
+
+将```<div></div>```更新为```<p></p>```：
+```js
+// React Element <p></p>
+jsx("p")
+// 对应fiberNode
+FiberNode {type: 'div'}
+// 生成子fiberNode（无）
+// 对应标记，先删除div，后插入p
+Deletion Placement
+```
+
+当所有ReactElement比较完后，会生成一棵fiberNode树，一共会存在两棵fiberNode树：
+
+- current：与视图中真实UI对应的fiberNode树
+- workInProgress：触发更新后，正在reconciler中计算的fiberNode树
+
+### 3.4 JSX消费的顺序
+以DFS（深度优先遍历）的顺序遍历ReactElement，这意味着：
+
+- 如果有子节点，遍历子节点
+- 如果没有子节点，遍历兄弟节点 例子：
+- Card -> h3 -> 你好（无子组件、无兄弟组件，退回到h3）-> p -> Big-React（无子组件、无兄弟组件，退回到p，p也没有兄弟节点，退回到Card）
+
+```jsx
+<Card>
+  <h3>你好</h3>
+  <p>Big-React</p>
+</Card>
+```
+
+这是个递归的过程，存在递、归两个阶段：
+
+- 递：对应beginWork
+- 归：对应completeWork

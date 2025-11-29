@@ -103,6 +103,20 @@ importers:
         specifier: ^4.0.0
         version: 4.5.14(@types/node@20.5.1)
 
+  packages/react:
+    dependencies:
+      shared:
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/react-reconciler:
+    dependencies:
+      shared:
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/shared: {}
+
 packages:
 
   '@babel/code-frame@7.27.1':
