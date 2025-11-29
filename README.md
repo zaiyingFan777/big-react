@@ -307,13 +307,17 @@ Deletion Placement
 ![alt text](./assets/update-1.png)
 
 接下来的工作包括：
-- 实现mount时调用的API
+- 实现mount时调用的API（入口文件fiberReconciler.ts）
 - 将该API接入上述更新机制中
 
 需要考虑的事情：
-- 更新可能发生于任意组件，而更新流程是从根节点递归的
+- 更新可能发生于任意组件，<strong>而更新流程是从根节点递归的</strong>
 - 需要一个统一的根节点保存通用信息
 ```js
 ReactDOM.createRoot(rootElement).render(<App/>)
 ```
 ![alt text](./assets/update-2.png)
+图片的一些解释
+- ReactDOM.createRoot(rootElement)会创建统一的入口fiberRootNode
+- rootElement这个DOM对应的fiber节点为hostRootFiber
+- render(<App/>)会创建App的fiber节点

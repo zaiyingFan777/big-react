@@ -1,6 +1,7 @@
 import { Props, Key, Ref } from 'shared/ReactTypes';
 import { WorkTag } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
+import { Container } from 'hostConfig';
 
 export class FiberNode {
 	type: any;
@@ -16,8 +17,10 @@ export class FiberNode {
 	index: number;
 
 	memoizedProps: Props | null;
+	memoizedState: any;
 	alternate: FiberNode | null;
 	flags: Flags;
+	updateQueue: unknown;
 
 	constructor(tag: WorkTag, pendingProps: Props, key: Key) {
 		// 实例属性
@@ -47,6 +50,9 @@ export class FiberNode {
 		this.pendingProps = pendingProps;
 		// 此工作单元工作结束的时候的props
 		this.memoizedProps = null;
+		// 此工作单元工作结束的时候的state
+		this.memoizedState = null;
+		this.updateQueue = null;
 
 		// 如果此时fiberNode为current,则alternate指向workInProgress。
 		// 如果此时fiberNode为workInProgress,则alternate指向current。
@@ -55,3 +61,52 @@ export class FiberNode {
 		this.flags = NoFlags;
 	}
 }
+
+export class FiberRootNode {
+	// 保存宿主环境挂载的节点，比如ReactDOM.createRoot(rootElement)中的rootElement
+	container: Container;
+	// current指向hostRootFiber
+	current: FiberNode;
+	// 指向 本次更新完成后的hostRootFiber
+	finishedWork: FiberNode | null;
+	constructor(container: Container, hostRootFiber: FiberNode) {
+		this.container = container;
+		this.current = hostRootFiber;
+		// hostRootFiber.stateNode指向fiberRootNode
+		hostRootFiber.stateNode = this;
+		this.finishedWork = null;
+	}
+}
+
+// 创建workInProgress【记录Update开始后的fiber节点】
+// 传入current，返回alternate 【双缓存技术】
+export const createWorkInProgress = (
+	current: FiberNode,
+	pendingProps: Props
+): FiberNode => {
+	let wip = current.alternate;
+
+	if (wip === null) {
+		// mount
+		wip = new FiberNode(current.tag, pendingProps, current.key);
+		// 指向fiberRootNode
+		wip.stateNode = current.stateNode;
+
+		// 相互绑定
+		wip.alternate = current;
+		current.alternate = wip;
+	} else {
+		// update
+		wip.pendingProps = pendingProps;
+		// 清空副作用，可能是上次更新遗留下来的
+		wip.flags = NoFlags;
+	}
+	wip.type = current.type;
+	// shared.pending数据结构方便wip和current共用这一数据结构
+	wip.updateQueue = current.updateQueue;
+	wip.child = current.child;
+	wip.memoizedProps = current.memoizedProps;
+	wip.memoizedState = current.memoizedState;
+
+	return wip;
+};
