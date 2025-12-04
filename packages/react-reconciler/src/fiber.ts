@@ -20,6 +20,7 @@ export class FiberNode {
 	memoizedState: any;
 	alternate: FiberNode | null;
 	flags: Flags;
+	subtreeFlags: Flags;
 	updateQueue: unknown;
 
 	constructor(tag: WorkTag, pendingProps: Props, key: Key) {
@@ -59,6 +60,8 @@ export class FiberNode {
 		this.alternate = null;
 		// 副作用
 		this.flags = NoFlags;
+		// 子树中包含的副作用
+		this.subtreeFlags = NoFlags;
 	}
 }
 
@@ -100,6 +103,7 @@ export const createWorkInProgress = (
 		wip.pendingProps = pendingProps;
 		// 清空副作用，可能是上次更新遗留下来的
 		wip.flags = NoFlags;
+		wip.subtreeFlags = NoFlags;
 	}
 	wip.type = current.type;
 	// shared.pending数据结构方便wip和current共用这一数据结构
