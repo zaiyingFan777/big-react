@@ -410,3 +410,106 @@ pnpm i -d -w @rollup/plugin-replace
 flags分布在不同fiberNode中，如何快速找到他们？
 
 答案：利用completeWork向上遍历（归）的流程，将子fiberNode的flags冒泡到父fiberNode
+
+## 6：初探ReactDOM
+react内部3个阶段：
+
+- schedule阶段
+- render阶段（beginWork completeWork）
+- commit阶段（commitWork）
+
+### 6.1 commit阶段的3个子阶段
+- beforeMutation阶段
+- mutation阶段
+- layout阶段
+
+当前commit阶段要执行的任务：
+
+- fiber树的切换
+- 执行Placement对应操作
+
+需要注意的问题，考虑如下JSX，如果span含有flag，该如何找到它：
+```jsx
+<App>
+ <div>
+  <span>只因</span>
+ </div>
+</App>
+```
+
+### 6.2 打包ReactDOM
+需要注意的点：
+
+- 兼容原版React的导出（React17以及之前是ReactDOM/index.js，React18之后是ReactDOM/client.js）
+- 处理hostConfig的指向
+
+### 6.3 注意
+react-dom包中的package.json中的解释
+- dependencies，当开发者安装了react-dom，那么也会安装react-dom生产环境的依赖，shared、react-reconciler等
+- peerDependencies，虽然也是依赖，并不会因为当前模块的安装而安装，因为开发者的项目中已经存在了react包
+```json
+{
+	"name": "react-dom",
+	"version": "1.0.0",
+	"description": "",
+	"module": "index.ts",
+	"dependencies": {
+		"shared": "workspace:*",
+		"react-reconciler": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": "workspace:*"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC"
+}
+```
+
+### 6.4 注意2
+1. react-dom包打包react-reconciler
+```ts
+// 比如我们的react-reconciler使用了hostConfig的方法，这里兼容了react-dom、其他client的写法
+import { appendChildToContainer, Container } from 'hostConfig';
+// 需要我们在react-dom.config.js中添加配置alias
+// 这么做就是在打包react-dom，react-dom中使用了react-reconciler的方法，然后react-reconciler又需要引入react-dom中
+// 的hostConfig，上面的代码引入，因此我们在打包的过程中，让hostConfig: "react-dom/src/hostConfig.ts"
+plugins: [
+  ...getBaseRollupPlugins(),
+  // webpack resolve alias
+  alias({
+    entries: {
+      hostConfig: `${pkgPath}/src/hostConfig.ts`
+    }
+  }),
+  ....
+]
+```
+2. tsconfig.json中的配置仅仅是为了代码不报错
+```json
+{
+	"compileOnSave": true,
+	"compilerOptions": {
+    ...
+		"baseUrl": "./packages",
+		"paths": {
+			"hostConfig": ["./react-dom/src/hostConfig.ts"]
+		}
+	}
+}
+```
+
+
+### todo
+```tsconfig.json 暂时改为false
+  "noUnusedLocals": false,
+  "noUnusedParameters": false,
+```
+
+```
+todo:
+<div>
+  <span>123</span>
+</div>
+mount流程这里的div会有flag为Placement，并且在HostRoot的时候，bubbleProperties（wip)会将div的Placement冒泡到hostRootFiber的subtreeFlags
+```

@@ -1,5 +1,6 @@
 import {
 	appendInitialChild,
+	Container,
 	createInstance,
 	createTextInstance
 } from 'hostConfig';
@@ -27,7 +28,8 @@ export const completeWork = (wip: FiberNode) => {
 				// wip.stateNode保存的是dom节点
 			} else {
 				// 1. 构建DOM
-				const instance = createInstance(wip.type, newProps);
+				// const instance = createInstance(wip.type, newProps);
+				const instance = createInstance(wip.type);
 				// 2. 将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				wip.stateNode = instance;
@@ -67,7 +69,7 @@ export const completeWork = (wip: FiberNode) => {
 // appendAllChildren 的逻辑是「递归查找当前 Fiber 节点的所有子 Fiber 树中的 Host 类型节点（HostComponent/HostText） ，
 // 并把它们挂载到当前 Fiber 对应的 DOM 上」—— 而 Host 类型节点的 DOM 是「层级挂载」的（123 的 text DOM 挂在 span 的 DOM 下，
 // span 的 DOM 挂在 div 的 DOM 下），递归查找时会「跳过非 Host 类型节点，但不会重复插入已挂载的子 DOM」
-function appendAllChildren(parent: FiberNode, wip: FiberNode) {
+function appendAllChildren(parent: Container, wip: FiberNode) {
 	let node = wip.child;
 
 	while (node !== null) {
