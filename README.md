@@ -513,3 +513,39 @@ todo:
 </div>
 mount流程这里的div会有flag为Placement，并且在HostRoot的时候，bubbleProperties（wip)会将div的Placement冒泡到hostRootFiber的subtreeFlags
 ```
+
+## 7. 初探FC与实现第二种调试方式
+FunctionComponent需要考虑的问题：
+
+- 如何支持FC？
+- 如何组织Hooks？（下一节课讲解）
+
+### 7.1 如何支持FC？
+FC的工作同样植根于：
+
+- beginWork
+- completeWork
+
+### 7.2 第二种调试方式
+采用vite的实时调试，他的好处是「实时看到源码运行效果」。
+
+创建vite项目：
+
+```zsh
+# 在big react目录下执行
+pnpm create vite
+# Project name: demos
+# Select a framework: react
+# Select a variant: typescript
+# Use rolldown-vite (Experimental)?: No(先稳定性)
+# Install with pnpm and start now? no
+```
+
+使用vite而不是webpack作为demo调试的原因：
+
+- 在开发阶段编译速度快于webpack
+- vite的插件体系与rollup兼容
+
+
+### 7.3 课外资料
+如果vite热更新失效，可能是因为「书写的React组件不符合规范」，可以引入eslint-plugin-react-refresh插件检查不符合规范的地方。

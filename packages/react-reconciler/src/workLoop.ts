@@ -56,6 +56,9 @@ function renderRoot(root: FiberRootNode) {
 
 	// 完成流程创建好的wip(hostRootFiber)
 	const finishedWork = root.current.alternate;
+	// console.log(root);
+	// console.log(finishedWork);
+	// debugger;
 	root.finishedWork = finishedWork;
 
 	// wip fiberNode树 树中的flags
@@ -95,7 +98,6 @@ function commitRoot(root: FiberRootNode) {
 		root.current = finishedWork;
 	}
 }
-
 
 function workLoop() {
 	while (workInProgress !== null) {

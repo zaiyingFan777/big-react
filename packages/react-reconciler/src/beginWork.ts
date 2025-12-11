@@ -1,8 +1,14 @@
 import { ReactElementType } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import { processUpdateQueue, UpdateQueue } from './updateQueue';
-import { HostComponent, HostRoot, HostText } from './workTags';
+import {
+	FunctionComponent,
+	HostComponent,
+	HostRoot,
+	HostText
+} from './workTags';
 import { mountChildFibers, reconcileChildFibers } from './childFibers';
+import { renderWithHooks } from './fiberHooks';
 
 export const beginWork = (wip: FiberNode) => {
 	// 递归中的递阶段
@@ -16,6 +22,8 @@ export const beginWork = (wip: FiberNode) => {
 			// 没有beginWork的流程，因为他没有子节点
 			// <p>唱跳Rap</p> 唱跳Rap是没有子节点的
 			return null;
+		case FunctionComponent:
+			return updateFunctionComponent(wip);
 		default:
 			if (__DEV__) {
 				console.warn('beginWork未实现的类型');
@@ -24,6 +32,17 @@ export const beginWork = (wip: FiberNode) => {
 	}
 	return null;
 };
+
+// 1.调用函数组件的函数
+// 2.生成函数组件的子FiberNode
+function updateFunctionComponent(wip: FiberNode) {
+	// 拿到函数组件的函数，并执行，得到函数组件的子ReactElement
+	const nextChildren = renderWithHooks(wip);
+	// 对比子FiberNode和子ReactElement，生成函数组件的子FiberNode
+	reconcileChildren(wip, nextChildren);
+
+	return wip.child;
+}
 
 // 1.计算状态的最新值
 // 2.创造子fiberNode

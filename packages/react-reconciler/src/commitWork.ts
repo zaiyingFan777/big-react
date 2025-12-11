@@ -58,6 +58,7 @@ const commitPlacement = (finishedWork: FiberNode) => {
 	}
 	// parent DOM
 	const hostParent = getHostParent(finishedWork);
+	// console.log('hostParent', hostParent);
 	// finishedWork ~~ DOM append parent DOM
 	if (hostParent !== null) {
 		// 找到finished对应的dom节点插入到父节点

@@ -6,7 +6,12 @@ import {
 } from 'hostConfig';
 import { FiberNode } from './fiber';
 import { NoFlags } from './fiberFlags';
-import { HostRoot, HostText, HostComponent } from './workTags';
+import {
+	HostRoot,
+	HostText,
+	HostComponent,
+	FunctionComponent
+} from './workTags';
 
 // 1.对于Host类型的fiberNode：构建离屏dom树
 export const completeWork = (wip: FiberNode) => {
@@ -49,7 +54,9 @@ export const completeWork = (wip: FiberNode) => {
 		case HostRoot:
 			bubbleProperties(wip);
 			return null;
-
+		case FunctionComponent:
+			bubbleProperties(wip);
+			return null;
 		default:
 			if (__DEV__) {
 				console.warn('未处理的completeWork情况', wip);
