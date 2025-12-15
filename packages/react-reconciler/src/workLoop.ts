@@ -92,7 +92,7 @@ function commitRoot(root: FiberRootNode) {
 		commitMutationEffects(finishedWork);
 
 		root.current = finishedWork;
-
+		console.log(finishedWork);
 		// layout
 	} else {
 		root.current = finishedWork;

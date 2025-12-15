@@ -52,6 +52,8 @@ export class FiberNode {
 		// 此工作单元工作结束的时候的props
 		this.memoizedProps = null;
 		// 此工作单元工作结束的时候的state
+		// ! function comp中 memoizedState指向fc中第0个hook(hooks[0].next -> useEffect..)，这里的hooks是个
+		// ! 链表，因此定义的hook顺序不能变，他是一条链表保存的
 		this.memoizedState = null;
 		this.updateQueue = null;
 

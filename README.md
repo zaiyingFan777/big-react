@@ -499,21 +499,6 @@ plugins: [
 }
 ```
 
-
-### todo
-```tsconfig.json 暂时改为false
-  "noUnusedLocals": false,
-  "noUnusedParameters": false,
-```
-
-```
-todo:
-<div>
-  <span>123</span>
-</div>
-mount流程这里的div会有flag为Placement，并且在HostRoot的时候，bubbleProperties（wip)会将div的Placement冒泡到hostRootFiber的subtreeFlags
-```
-
 ## 7. 初探FC与实现第二种调试方式
 FunctionComponent需要考虑的问题：
 
@@ -549,3 +534,64 @@ pnpm create vite
 
 ### 7.3 课外资料
 如果vite热更新失效，可能是因为「书写的React组件不符合规范」，可以引入eslint-plugin-react-refresh插件检查不符合规范的地方。
+
+## 8. 实现useState
+hook脱离FC上下文，仅仅是普通函数，如何让他拥有感知上下文环境的能力？
+
+比如说：
+
+- hook如何知道在另一个hook的上下文环境内执行？答案：1.reconciler知道当前是Mount还是update 2.根据mount/update/hooks创建不同的useState函数(在Reconciler包中实现)。3.内部数据共享层保存当前使用的hooks集合（内部数据共享层是在React包中） 4.React中调用的内部数据共享层中当前使用的Hooks的集合 5.由于React和Reconciler是解耦的，因此在shared包中进行一次中转（引入的是React中定义的_secret...）6.最后我们在Reconciler中引入shared的共享层(其实是react包中的_secret...)，并将数据注入进去
+```jsx
+function App() {
+  useEffect(() => {
+    // 执行useState时怎么知道处在useEffect上下文？
+    useState(0);
+  })
+}
+```
+- hook怎么知道当前是mount还是update？
+
+解决方案：「在不同上下文中调用的hook不是同一个函数」。
+![alt text](./assets/useState-1.png)
+
+实现「内部数据共享层」时的注意事项：
+
+以浏览器举例，Reconciler + hostConfig = ReactDOM
+
+增加「内部数据共享层」，意味着Reconciler与React产生关联，进而意味着ReactDOM与React产生关联。
+
+如果两个包「产生关联」，在打包时需要考虑：「两者的代码是打包在一起还是分开？」
+
+如果打包在一起，意味着打包后的ReactDOM中会包含React的代码，那么ReactDOM中会包含一个「内部数据共享层」(因为数据共享层是在react包中实现的)，React中也会包含一个「内部数据共享层」，这两者不是同一个「内部数据共享层」。
+
+而我们希望两者共享数据，所以不希望ReactDOM中会包含React的代码。
+
+答案：我们在react-dom.config.js打包中定义external: ['react']，将react作为外部包，不会打包进来
+
+- hook如何知道自身数据保存在哪？
+```jsx
+function App() {
+  // 执行useState为什么能返回正确的num？
+  const [num] = useState(0);
+}
+```
+答案：「可以记录当前正在render的FC对应fiberNode，在fiberNode中保存hook数据」
+
+### 8.1 实现Hooks的数据结构
+fiberNode中可用的字段：
+
+- memoizedState
+- updateQueue
+
+![alt text](./assets/useState-2.png)
+
+对于FC对应的fiberNode，存在两层数据：
+
+- fiberNode.memoizedState对应Hooks链表
+- 链表中每个hook对应自身的数据
+
+### 8.3 实现useState
+包括2方面工作：
+
+- 实现mount时useState的实现
+- 实现dispatch方法，并接入现有更新流程内
