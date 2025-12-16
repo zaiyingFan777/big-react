@@ -1,6 +1,6 @@
 import { Dispatcher, resolveDispatcher } from './src/currentDispatcher';
 import currentDispatcher from './src/currentDispatcher';
-import { jsxDEV } from './src/jsx';
+import { jsxDEV, jsx, isValidElement as isValidElementFn } from './src/jsx';
 
 export const useState: Dispatcher['useState'] = (initialState) => {
 	const dispatcher = resolveDispatcher();
@@ -13,7 +13,7 @@ export const __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = {
 };
 
 // react包入口文件
-export default {
-	version: '0.0.0',
-	createElement: jsxDEV
-};
+export const version = '0.0.0';
+// 生产环境使用jsx，开发环境使用jsxDEV
+export const createElement = jsx;
+export const isValidElement = isValidElementFn;

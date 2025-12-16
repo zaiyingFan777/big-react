@@ -15,12 +15,12 @@ export default [
 		output: [
 			{
 				file: `${pkgDistPath}/index.js`,
-				name: 'index.js',
-				format: 'umd'
+				name: 'ReactDOM', // 如果是esm name为index.js是没问题的，但是如果在浏览器中window来取，index.js: window["index.js"]，因此改为index
+				format: 'umd' // umd兼容commonjs和esm
 			},
 			{
 				file: `${pkgDistPath}/client.js`,
-				name: 'client.js',
+				name: 'client',
 				format: 'umd'
 			}
 		],
@@ -47,5 +47,18 @@ export default [
 				})
 			})
 		]
+	},
+	// react-test-utils
+	{
+		input: `${pkgPath}/test-utils.ts`, // react-dom/test-utils.ts
+		output: [
+			{
+				file: `${pkgDistPath}/test-utils.js`,
+				name: 'testUtils',
+				format: 'umd'
+			}
+		],
+		external: ['react-dom', 'react'], // 把react、react-dom作为外部依赖，不会打入到test-utils.js包里
+		plugins: getBaseRollupPlugins()
 	}
 ];

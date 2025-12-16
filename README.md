@@ -595,3 +595,62 @@ fiberNode中可用的字段：
 
 - 实现mount时useState的实现
 - 实现dispatch方法，并接入现有更新流程内
+
+## 9. 实现第三种调试方式
+
+本节课我们将实现第三种调试方式 —— 用例调试，包括三部分内容：
+
+- 实现第一个测试工具test-utils
+- 实现测试环境
+- 实现ReactElement用例
+
+与测试相关的代码都来自React仓库，可以先把React仓库下载下来：
+```zsh
+git clone git@github.com:facebook/react.git
+```
+
+### 9.1 实现test-utils
+这是用于测试的工具集，来源自ReactTestUtils.js，特点是：使用ReactDOM作为宿主环境
+
+### 9.2 实现测试环境
+```zsh
+pnpm i -D -w jest jest-config jest-environment-jsdom
+```
+配置：
+```js
+const { defaults } = require('jest-config');
+
+module.exports = {
+  ...defaults,
+  rootDir: process.cwd(),
+  modulePathIgnorePatterns: ['<rootDir>/.history'],
+  moduleDirectories: [
+    // 对于 React ReactDOM
+    'dist/node_modules',
+    // 对于第三方依赖
+    ...defaults.moduleDirectories
+  ],
+  testEnvironment: 'jsdom'
+};
+```
+
+### 9.3 实现ReactElement用例
+来源自ReactElement-test.js，用例代码在本节最后。
+
+为jest增加JSX解析能力，安装Babel：
+```zsh
+pnpm i -D -w @babel/core @babel/preset-env @babel/plugin-transform-react-jsx
+```
+新增babel.config.js：
+```js
+module.exports = {
+  presets: ['@babel/preset-env'],
+  plugins: [
+    [
+      '@babel/plugin-transform-react-jsx',
+      {throwIfNamespace: false}
+    ]
+  ]
+}
+```
+用例代码(见文件react/src/__tests_/ReactElement-test.js)

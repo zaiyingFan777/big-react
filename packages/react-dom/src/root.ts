@@ -12,7 +12,8 @@ export function createRoot(container: Container) {
 
 	return {
 		render(element: ReactElementType) {
-			updateContainer(element, root);
+			// 返回reactElement
+			return updateContainer(element, root);
 		}
 	};
 }

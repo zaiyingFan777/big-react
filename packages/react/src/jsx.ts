@@ -27,6 +27,14 @@ const ReactElement = function (
 	return element;
 };
 
+export function isValidElement(object: any) {
+	return (
+		typeof object === 'object' &&
+		object !== null &&
+		object.$$typeof === REACT_ELEMENT_TYPE
+	);
+}
+
 // <div id="id1" className="cls1" key="key1">123</div> =>
 // import { jsx as _jsx } from 'react/jsx-runtime';
 // /*#__PURE__*/_jsx("div", {
