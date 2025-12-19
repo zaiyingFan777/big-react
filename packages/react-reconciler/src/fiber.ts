@@ -22,6 +22,7 @@ export class FiberNode {
 	flags: Flags;
 	subtreeFlags: Flags;
 	updateQueue: unknown;
+	deletions: FiberNode[] | null;
 
 	constructor(tag: WorkTag, pendingProps: Props, key: Key) {
 		// 实例属性
@@ -64,6 +65,8 @@ export class FiberNode {
 		this.flags = NoFlags;
 		// 子树中包含的副作用
 		this.subtreeFlags = NoFlags;
+		// 父节点的数组结构，保存了父节点下需要被删除的子节点
+		this.deletions = null;
 	}
 }
 
@@ -106,6 +109,7 @@ export const createWorkInProgress = (
 		// 清空副作用，可能是上次更新遗留下来的
 		wip.flags = NoFlags;
 		wip.subtreeFlags = NoFlags;
+		wip.deletions = null;
 	}
 	wip.type = current.type;
 	// shared.pending数据结构方便wip和current共用这一数据结构

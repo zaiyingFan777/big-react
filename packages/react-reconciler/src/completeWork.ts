@@ -5,13 +5,17 @@ import {
 	createTextInstance
 } from 'hostConfig';
 import { FiberNode } from './fiber';
-import { NoFlags } from './fiberFlags';
+import { NoFlags, Update } from './fiberFlags';
 import {
 	HostRoot,
 	HostText,
 	HostComponent,
 	FunctionComponent
 } from './workTags';
+
+function markUpdate(fiber: FiberNode) {
+	fiber.flags |= Update;
+}
 
 // 1.对于Host类型的fiberNode：构建离屏dom树
 export const completeWork = (wip: FiberNode) => {
@@ -29,8 +33,9 @@ export const completeWork = (wip: FiberNode) => {
 	switch (wip.tag) {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
-				// update
+				// * update 属性变化
 				// wip.stateNode保存的是dom节点
+				// * className a => b 标记Update
 			} else {
 				// 1. 构建DOM
 				// const instance = createInstance(wip.type, newProps);
@@ -44,6 +49,11 @@ export const completeWork = (wip: FiberNode) => {
 		case HostText:
 			if (current !== null && wip.stateNode) {
 				// update
+				const oldText = current.memoizedProps.content;
+				const newText = newProps.content;
+				if (oldText !== newText) {
+					markUpdate(wip);
+				}
 			} else {
 				// 1. 构建DOM
 				const instance = createTextInstance(newProps.content);
