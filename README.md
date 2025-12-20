@@ -730,3 +730,25 @@ function App() {
   return <div>{num}</div>;
 }
 ```
+
+## 11.实现事件系统
+事件系统本质上植根于浏览器事件模型，所以他隶属于ReactDOM，在实现时要做到对Reconciler 0侵入。
+
+实现事件系统需要考虑：
+
+- 模拟实现浏览器事件捕获、冒泡流程
+- 实现合成事件对象
+- 方便后续扩展(不同的事件，不同的优先级)
+
+### 11.1 实现ReactDOM与Reconciler对接
+将事件回调保存在DOM中，通过以下两个时机对接：
+
+- 创建DOM时：HostComponent的completeWork中，创建DOM的时候（createInstance），dom[xxx] = reactElemnt props
+- 更新属性时
+
+### 11.2 模拟实现浏览器事件流程
+![alt text](./assets/event.png)
+需要注意的点：
+
+- 基于事件对象实现合成事件，以满足自定义需求（比如阻止事件传递）
+- k方便后续扩展优先级机制

@@ -12,6 +12,7 @@ import {
 	HostComponent,
 	FunctionComponent
 } from './workTags';
+import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 function markUpdate(fiber: FiberNode) {
 	fiber.flags |= Update;
@@ -33,13 +34,21 @@ export const completeWork = (wip: FiberNode) => {
 	switch (wip.tag) {
 		case HostComponent:
 			if (current !== null && wip.stateNode) {
-				// * update 属性变化
+				// * update
 				// wip.stateNode保存的是dom节点
-				// * className a => b 标记Update
+				// * 属性变化标记Update
+				// 1.判断props是否变化 {onClick: xx} => {onClick: xxx}、className a => b、styles属性变化
+				// 1.1对于HostComponent类型的数据，我们把变化的属性放到fiber.updateQueue中
+				// 1.2 fiberNode.updateQueue = [className, 'aaa', title, 'hahah']，第n项为哪个属性变了，第n+1向为该属性变化后的值是什么。
+				// 1.3 n就是key(属性), n+1就是value
+				// 2.变了打Update flag标记
+				// 3.commitWork的时候commitUpdate方法增加HostComponent的case，并执行更新属性的操作
+				// 3.1本应该在commitWork阶段更新，但是我们这里简单处理，在completeWork阶段更新
+				updateFiberProps(wip.stateNode, newProps);
 			} else {
+				// mount
 				// 1. 构建DOM
-				// const instance = createInstance(wip.type, newProps);
-				const instance = createInstance(wip.type);
+				const instance = createInstance(wip.type, newProps);
 				// 2. 将DOM插入到DOM树中
 				appendAllChildren(instance, wip);
 				wip.stateNode = instance;
@@ -49,7 +58,7 @@ export const completeWork = (wip: FiberNode) => {
 		case HostText:
 			if (current !== null && wip.stateNode) {
 				// update
-				const oldText = current.memoizedProps.content;
+				const oldText = current.memoizedProps?.content;
 				const newText = newProps.content;
 				if (oldText !== newText) {
 					markUpdate(wip);
