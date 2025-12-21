@@ -752,3 +752,147 @@ function App() {
 
 - 基于事件对象实现合成事件，以满足自定义需求（比如阻止事件传递）
 - k方便后续扩展优先级机制
+
+## 12.实现Diff算法
+当前仅实现了单一节点的「增/删操作」，即「单节点Diff算法」。本节课实现「多节点的Diff算法」。
+
+本节课采用简写示例：A1 -> A2，A代表type、数字代表key
+
+### 12.1 对于reconcileSingleElement的改动（单节点的diff）
+当前支持的情况：
+
+- A1 -> B1
+- A1 -> A2
+需要支持的情况：
+
+- ABC -> A
+
+<strong>「单/多节点」是指「更新后是单/多节点」。</strong>
+
+更细致的，我们需要区分4种情况：
+
+- key相同，type相同 == 复用当前节点
+
+例如：A1 B2 C3 -> A1
+
+- key相同，type不同 == 不存在任何复用的可能性
+
+例如：A1 B2 C3 -> B1
+
+- key不同，type相同  == 当前节点不能复用
+- key不同，type不同 == 当前节点不能复用
+
+### 12.2 对于reconcileSingleTextNode的改动（单节点的diff）
+类似reconcileSingleElement。
+
+### 12.3 对于同级多节点Diff的支持
+单节点需要支持的情况：
+
+- 插入 Placement
+- 删除 ChildDeletion
+
+多节点需要支持的情况：
+
+- 插入 Placement
+- 删除 ChildDeletion
+- 移动 Placement
+
+整体流程分为4步。
+
+1. 将current中所有同级fiber保存在Map中
+
+2. 遍历newChild数组，对于每个遍历到的element，存在两种情况：
+
+  - 在Map中存在对应current fiber，且可以复用
+  - 在Map中不存在对应current fiber，或不能复用
+
+3. 判断是插入还是移动
+
+4. 最后Map中剩下的都标记删除
+
+### 12.4 步骤2 —— 是否复用 详解
+首先，根据key从Map中获取current fiber，如果不存在current fiber，则没有复用的可能。
+
+接下来，分情况讨论：
+
+- element是HostText，current fiber是么？
+- element是其他ReactElement，current fiber是么？
+- TODO element是数组或Fragment，current fiber是么？
+
+```jsx
+<ul>
+  <li/>
+  <li/>
+  {[<li/>, <li/>]}
+</ul>
+
+<ul>
+  <li/>
+  <li/>
+  <>
+      <li/>
+      <li/>
+  </>
+</ul>
+```
+
+### 12.5 步骤3 —— 插入/移动判断 详解
+「移动」具体是指「向右移动」
+
+移动的判断依据：element的index与「element对应current fiber」的index的比较
+
+A1 B2 C3 -> B2 C3 A1
+
+0__1__2______0__1__2
+
+当遍历element时，「当前遍历到的element」一定是「所有已遍历的element」中最靠右那个。
+
+所以只需要记录「最后一个可复用fiber」在current中的index（lastPlacedIndex），在接下来的遍历中：
+
+- 如果接下来遍历到的「可复用fiber」的index < lastPlacedIndex，则标记Placement
+- 否则，不标记
+
+### 12.6 移动操作的执行
+Placement同时对应：
+
+- 移动
+- 插入
+
+对于插入操作，之前对应的DOM方法是parentNode.appendChild，现在为了实现移动操作，需要支持parentNode.insertBefore。
+
+parentNode.insertBefore需要找到「目标兄弟Host节点」，要考虑2个因素：
+
+- 可能并不是目标fiber的直接兄弟节点
+```jsx
+// 情况1
+<A/><B/>
+function B() {
+  return <div/>;
+}
+
+// 情况2
+<App/><div/>
+function App() {
+  return <A/>;
+}
+```
+
+- 不稳定的Host节点不能作为「目标兄弟Host节点」
+
+### 12.7 不足
+不支持数组与Fragment
+
+```jsx
+<>
+  <div/>
+  <div/>
+</>
+
+<ul>
+  <li/>
+  <li/>
+  {[<li/>, <li/>]}
+</ul>
+```
+
+- 可能有未考虑到的边界情况
