@@ -2,7 +2,8 @@ export type WorkTag =
 	| typeof FunctionComponent
 	| typeof HostRoot
 	| typeof HostComponent
-	| typeof HostText;
+	| typeof HostText
+	| typeof Fragment;
 
 // 函数组件的类型
 export const FunctionComponent = 0;
@@ -12,3 +13,4 @@ export const HostRoot = 3;
 export const HostComponent = 5;
 // <div>123</div> 中的123这个文本
 export const HostText = 6;
+export const Fragment = 7;

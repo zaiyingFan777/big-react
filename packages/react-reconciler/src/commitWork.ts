@@ -85,6 +85,30 @@ const commitMutaitonEffectsOnFiber = (finishedWork: FiberNode) => {
 	}
 };
 
+function recordHostChildrenToDelete(
+	childrenToDelete: FiberNode[],
+	unmountFiber: FiberNode
+) {
+	// 1. 找到第一个root host节点
+	const lastOne = childrenToDelete[childrenToDelete.length - 1];
+
+	if (!lastOne) {
+		// 最后一个不存在，childrenToDelete为空数组，所以我们将unmountFiber push到childrenToDelete中
+		childrenToDelete.push(unmountFiber);
+	} else {
+		// 我们需要判断unmountFiber是不是最后一个节点的兄弟节点（此时兄弟节点存在）
+		let node = lastOne.sibling;
+		while (node !== null) {
+			if (unmountFiber === node) {
+				childrenToDelete.push(unmountFiber);
+			}
+			node = node.sibling;
+		}
+	}
+
+	// 2. 每找到一个 host节点，判断下这个节点是不是 1 找到那个节点的兄弟节点
+}
+
 // 删除child fiber
 // * 假设要删除div，是要删除div这个子树，对于子树中的不同类型的组件在面对被删除的时候需要不同的处理
 // 1.FC中如果存在useEffect，需要执行unmount的逻辑、解绑ref
@@ -108,7 +132,9 @@ const commitMutaitonEffectsOnFiber = (finishedWork: FiberNode) => {
 // * commitDeletion递归子树的操作
 function commitDeletion(childToDelete: FiberNode) {
 	// * 定义childToDelete这颗子树的根HostComponent
-	let rootHostNode: FiberNode | null = null;
+	// let rootHostNode: FiberNode | null = null;
+	// * 由于Fragment下有可能有多个根host节点，因此我们定义为数组
+	const rootChildrenToDelete: FiberNode[] = [];
 
 	// 递归子树的流程为：
 	// div -> App -> p -> 12（到底了向上归到App） -> p -> 34(到底了，向上归到div)
@@ -125,16 +151,20 @@ function commitDeletion(childToDelete: FiberNode) {
 		switch (unmountFiber.tag) {
 			case HostComponent:
 				// 如果childToDelete子树的根HostComponent为null，说明找到了，则赋值
-				if (rootHostNode === null) {
-					rootHostNode = unmountFiber;
-				}
+				// if (rootHostNode === null) {
+				// 	rootHostNode = unmountFiber;
+				// }
+				// * 支持fragment
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				// TODO 解绑ref
 				return;
 			case HostText:
 				// 如果childToDelete子树的根HostComponent为null，说明找到了，则赋值
-				if (rootHostNode === null) {
-					rootHostNode = unmountFiber;
-				}
+				// if (rootHostNode === null) {
+				// 	rootHostNode = unmountFiber;
+				// }
+				// * 支持fragment
+				recordHostChildrenToDelete(rootChildrenToDelete, unmountFiber);
 				return;
 			case FunctionComponent:
 				// TODO useEffect unmount 、解绑ref
@@ -147,11 +177,13 @@ function commitDeletion(childToDelete: FiberNode) {
 	});
 
 	// 移除childToDelete的rootHostComponent的DOM
-	if (rootHostNode !== null) {
+	if (rootChildrenToDelete.length) {
 		// 然后再找到childToDelete的父fiber的DOM
 		const hostParent = getHostParent(childToDelete);
 		if (hostParent !== null) {
-			removeChild((rootHostNode as FiberNode).stateNode, hostParent);
+			rootChildrenToDelete.forEach((node) => {
+				removeChild(node.stateNode, hostParent);
+			});
 		}
 	}
 	// 彻底的移除链接、重置标记

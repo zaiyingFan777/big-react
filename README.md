@@ -896,3 +896,174 @@ function App() {
 ```
 
 - 可能有未考虑到的边界情况
+
+## 13. 实现Fragment
+为了提高组件结构灵活性，需要实现Fragment，具体来说，需要区分几种情况：
+
+### 13.1 Fragment包裹其他组件
+```jsx
+<>
+  <div></div>
+  <div></div>
+</>
+
+// 对应DOM
+<div></div>
+<div></div>
+```
+
+这种情况的JSX转换结果
+
+```js
+jsxs(Fragment, {
+  children: [
+    jsx("div", {}),
+    jsx("div", {})
+  ]
+});
+```
+type为Fragment的ReactElement，对单一节点的Diff需要考虑Fragment的情况。
+
+### 13.2 2. Fragment与其他组件同级
+
+```jsx
+<ul>
+  <>
+    <li>1</li>
+    <li>2</li>
+  </>
+  <li>3</li>
+  <li>4</li>
+</ul>
+
+// 对应DOM
+<ul>
+  <li>1</li>
+  <li>2</li>
+  <li>3</li>
+  <li>4</li>
+</ul>
+```
+
+这种情况的JSX转换结果
+
+```js
+jsxs('ul', {
+  children: [
+    jsxs(Fragment, {
+      children: [
+        jsx('li', {
+          children: '1'
+        }),
+        jsx('li', {
+          children: '2'
+        })
+      ]
+    }),
+    jsx('li', {
+      children: '3'
+    }),
+    jsx('li', {
+      children: '4'
+    })
+  ]
+});
+```
+
+children为数组类型，则进入reconcileChildrenArray方法，数组中的某一项为Fragment，所以需要增加「type为Fragment的ReactElement的判断」，同时beginWork中需要增加Fragment类型的判断。
+
+### 13.3 3. 数组形式的Fragment
+
+```jsx
+// arr = [<li>c</li>, <li>d</li>]
+
+<ul>
+  <li>a</li>
+  <li>b</li>
+  {arr}
+</ul>
+
+// 对应DOM
+<ul>
+  <li>a</li>
+  <li>b</li>
+  <li>c</li>
+  <li>d</li>
+</ul>
+```
+
+这种情况的JSX转换结果
+
+```js
+jsxs('ul', {
+  children: [
+    jsx('li', {
+      children: 'a'
+    }),
+    jsx('li', {
+      children: 'b'
+    }),
+    arr
+  ]
+});
+```
+
+children为数组类型，则进入reconcileChildrenArray方法，数组中的某一项为数组，所以需要增加「reconcileChildrenArray中数组类型的判断」。
+
+### 13.4 Fragment对beginWork、completeWork阶段的影响
+
+### 13.5 Fragment对ChildDeletion的影响（commitWork阶段）
+ChildDeletion删除DOM的逻辑：
+
+- 找到子树的根Host节点
+- 找到子树对应的父级Host节点
+- 从父级Host节点中删除子树根Host节点
+
+考虑删除p节点的情况(找到p,在div下删除p)：
+
+```jsx
+<div>
+  <p>xxx</p>
+</div>
+```
+
+考虑删除Fragment后，子树的根Host节点可能存在多个(要把div下的两个p节点都得删除)：
+
+```jsx
+<div>
+  <>
+    <p>xxx</p>
+    <p>yyy</p>
+  </>
+</div>
+```
+
+### 13.6 对React的影响（由于babel会将jsx编译为 jsxs(Fragemnt, {children: [xxx]})，因此我们需要把Fragment(type)导出）
+
+React包需要导出Fragment，用于JSX转换引入Fragment类型
+
+### 13.7 纠错
+当嵌套数组类型JSX（比如这个Demo）时，由于我们实现的源码中updateFromMap方法中如下代码没有考虑传入的element可能为数组形式：
+
+```js
+const keyToUse = element.key !== null ? element.key : index;
+```
+
+导致element为数组形式时keyToUse为undefined，进而导致Fragment不能复用，造成bug。
+
+为了解决这个问题，这种情况下可以使用index作为key，修改如下：
+
+```js
+function getElementKeyToUse(element: any, index?: number): Key {
+  if (
+   Array.isArray(element) ||
+   typeof element === 'string' ||
+   typeof element === 'number'
+  ) {
+   return index;
+  }
+  return element.key !== null ? element.key : index;
+ }
+```
+
+详见fix: fragment array没有key

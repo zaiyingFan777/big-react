@@ -1,4 +1,4 @@
-import { REACT_ELEMENT_TYPE } from 'shared/ReactSymbols';
+import { REACT_ELEMENT_TYPE, REACT_FRAGMENT_TYPE } from 'shared/ReactSymbols';
 import {
 	ElementType,
 	Key,
@@ -78,6 +78,9 @@ export const jsx = (type: ElementType, config: any, ...maybeChildren: any) => {
 	}
 	return ReactElement(type, key, ref, props);
 };
+
+// 由于babel会将jsx编译为 jsxs(Fragemnt, {children: [xxx]})，因此我们需要把Fragment(type)导出
+export const Fragment = REACT_FRAGMENT_TYPE;
 
 export const jsxDEV = (type: ElementType, config: any) => {
 	let key: Key = null;
