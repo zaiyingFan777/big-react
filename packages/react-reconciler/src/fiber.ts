@@ -7,6 +7,7 @@ import {
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
 import { Container } from 'hostConfig';
+import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 
 export class FiberNode {
 	type: any;
@@ -82,12 +83,18 @@ export class FiberRootNode {
 	current: FiberNode;
 	// 指向 本次更新完成后的hostRootFiber
 	finishedWork: FiberNode | null;
+	// 所有未更新的lane的集合
+	pendingLanes: Lanes;
+	// 本次更新选出来的lane
+	finishedLane: Lane;
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
 		// hostRootFiber.stateNode指向fiberRootNode
 		hostRootFiber.stateNode = this;
 		this.finishedWork = null;
+		this.pendingLanes = NoLanes;
+		this.finishedLane = NoLane;
 	}
 }
 
