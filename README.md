@@ -1173,3 +1173,150 @@ processUpdateQueue方法消费update时需要考虑：
 
 ### 14.7 commit阶段的改造
 移除「本次更新被消费的lane」。
+
+## 15 实现useEffect
+
+实现useEffect需要考虑的：
+
+- effect数据结构
+![alt text](./assets/useEffect-1.png)
+- effect的工作流程如何接入现有流程
+
+### 15.1 effect数据结构
+什么是effect？
+```jsx
+function App() {
+  useEffect(() => {
+    // create
+    return () => {
+        // destroy
+    }
+  }, [xxx, yyy])
+
+  useLayoutEffect(() => {})
+  useEffect(() => {}, [])
+
+  // ...
+}
+```
+
+数据结构需要考虑：
+
+- 不同effect可以共用同一个机制
+  - useEffect
+  - useLayoutEffect
+  - useInsertionEffect
+- 需要能保存依赖
+- 需要能保存create回调
+- 需要能保存destroy回调
+- 需要能够区分是否需要触发create回调
+  - mount时
+  - 依赖变化时
+```jsx
+const effect = {
+  tag,
+  create,
+  destroy,
+  deps,
+  next
+}
+```
+注意区分本节课新增的3个flag：
+
+- 对于fiber，新增PassiveEffect，代表「当前fiber本次更新存在副作用」
+- 对于effect hook，Passive代表「useEffect对应effect」
+- 对于effect hook，HookHasEffect代表「当前effect本次更新存在副作用」
+![alt text](./assets/useEffect-2.png)
+- 为了方便使用，最好和其他effect连接成链表
+
+render时重置effect链表（注意：下图有一点呈现的不够好，我们的useEffect数据是存放在hook.memoizedState中的，useEffect1.next指向的是下一个useEffect2，并构成环状链表，将最后一个useEffect，存放到fc fiberNode.updateQueue中。）
+![alt text](./assets/useEffect-3.png)
+
+### 15.2 effect的工作流程
+![alt text](./assets/useEffect-4.png)
+
+调度副作用
+
+调度需要使用Scheduler（调度器），调度器也属于React项目下的模块。在本课程中，我们不会实现调度器，但会教如何使用它。
+```zsh
+pnpm i -w scheduler
+pnpm i -D -w @types/scheduler
+```
+
+收集回调
+
+回调包括两类：
+
+- create回调
+- destroy回调
+
+<a href="https://codesandbox.io/s/wonderful-davinci-cduo7y?file=/src/App.js:276-336">在线Demo地址</a>
+
+```jsx
+function App() {
+  const [num, updateNum] = useState(0);
+  useEffect(() => {
+    console.log('App mount');
+  }, []);
+
+  useEffect(() => {
+    console.log('num change create', num);
+    return () => {
+      console.log('num change destroy', num);
+    };
+  }, [num]);
+
+  return (
+    <div onClick={() => updateNum(num + 1)}>
+      {num === 0 ? <Child /> : 'noop'}
+    </div>
+  );
+}
+
+function Child() {
+  useEffect(() => {
+    console.log('Child mount');
+    return () => console.log('Child unmount');
+  }, []);
+
+  return 'i am child';
+}
+```
+这意味着我们需要收集两类回调：
+
+- unmout时执行的destroy回调
+- update时执行的create回调
+
+执行副作用
+
+本次更新的任何create回调都必须在所有上一次更新的destroy回调执行完后再执行。
+
+整体执行流程包括：
+1. 遍历effect
+2. 首先触发所有unmount effect，且对于某个fiber，如果触发了unmount destroy，本次更新不会再触发update create
+3. 触发所有上次更新的destroy
+4. 触发所有这次更新的create
+
+mount、update时的区别
+
+- mount时：一定标记PassiveEffect
+- update时：deps变化时标记PassiveEffect
+
+### 15.3 纠错
+useEffect回调函数的执行依赖于：
+
+1. 调度flushPassiveEffects执行
+
+2. 收集需要执行的回调函数（commitMutationEffects方法）
+
+其中1需要判断PassiveMask，当前2只判断了MutationMask，这导致useEffect deps变化后无法触发回调，所以2也需要增加PassiveMask的判断：
+
+```jsx
+// 增加PassiveMask
+const subtreeHasEffect =
+  (finishedWork.subtreeFlags & (MutationMask | PassiveMask)) !== NoFlags;
+ const rootHasEffect =
+  (finishedWork.flags & (MutationMask | PassiveMask)) !== NoFlags;
+```
+
+详见<a href="https://github.com/BetaSu/big-react/commit/48b8d1b7ed0974beae16ceb697023ad4ad5686ea">fix: useEffect回调不收集的情况</a>
