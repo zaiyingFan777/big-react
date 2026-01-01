@@ -1602,3 +1602,56 @@ module.exports = {
 - 针对ReactDOM宿主环境：ReactTestUtils
 - 针对Reconciler的测试：React-Noop-Renderer
 - 针对并发环境的测试：jest-react、Scheduler、React-Noop-Renderer配合使用
+
+## 17.并发更新的原理
+
+本节课对标「React设计原理」5.1节。
+
+思考一个问题：我们当前的实现是如何驱动的？
+
+1. 交互触发更新
+2. 调度阶段微任务调度（ensureRootIsScheduled方法）
+3. 微任务调度结束，进入render阶段
+4. render阶段结束，进入commit阶段
+5. commit阶段结束，调度阶段微任务调度（ensureRootIsScheduled方法）
+整体是个大的微任务循环，循环的驱动力是「微任务调度模块」。
+
+### 17.1 同步示例
+![alt text](./assets/demo-concurrent-updates-1.png)
+
+示例在两种情况下会造成阻塞：
+
+- work.count数量太多(类比react组件太多)
+- 单个work.count工作量太大(类比组件太大、太耗时)
+
+### 17.2 并发更新的理论基础
+并发更新的基础是「时间切片」。
+
+### 17.3 改造示例
+如果我们想在宏任务中完成任务调度，本质上是个大的宏任务循环，循环的驱动力是Scheduler。
+
+> 理论基础参考《React设计原理》
+
+在微任务调度中，没有「优先级」的概念，对于Scheduler存在5种优先级：
+
+- ImmediatePriority
+- UserBlockingPriority
+- NormalPriority
+- LowPriority
+- IdlePriority
+
+![alt text](./assets/demo-concurrent-updates-2.png)
+
+需要考虑的情况：
+
+1. 工作过程仅有一个work
+
+如果仅有一个work，Scheduler有个优化路径：如果调度的回调函数的返回值是函数，则会继续调度返回的函数。
+
+2. 工作过程中产生相同优先级的work
+
+如果优先级相同，则不需要开启新的调度。
+
+3. 工作过程中产生更高/低优先级的work
+
+把握一个原则：我们每次选出的都是优先级最高的work。
