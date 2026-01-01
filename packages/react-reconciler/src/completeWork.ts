@@ -2,7 +2,8 @@ import {
 	appendInitialChild,
 	Container,
 	createInstance,
-	createTextInstance
+	createTextInstance,
+	Instance
 } from 'hostConfig';
 import { FiberNode } from './fiber';
 import { NoFlags, Update } from './fiberFlags';
@@ -13,7 +14,6 @@ import {
 	FunctionComponent,
 	Fragment
 } from './workTags';
-import { updateFiberProps } from 'react-dom/src/SyntheticEvent';
 
 function markUpdate(fiber: FiberNode) {
 	fiber.flags |= Update;
@@ -45,7 +45,9 @@ export const completeWork = (wip: FiberNode) => {
 				// 2.变了打Update flag标记
 				// 3.commitWork的时候commitUpdate方法增加HostComponent的case，并执行更新属性的操作
 				// 3.1本应该在commitWork阶段更新，但是我们这里简单处理，在completeWork阶段更新
-				updateFiberProps(wip.stateNode, newProps);
+				// updateFiberProps(wip.stateNode, newProps);
+				// * 简单处理不对比属性变化，直接标记有更新
+				markUpdate(wip);
 			} else {
 				// mount
 				// 1. 构建DOM
@@ -95,7 +97,7 @@ export const completeWork = (wip: FiberNode) => {
 // appendAllChildren 的逻辑是「递归查找当前 Fiber 节点的所有子 Fiber 树中的 Host 类型节点（HostComponent/HostText） ，
 // 并把它们挂载到当前 Fiber 对应的 DOM 上」—— 而 Host 类型节点的 DOM 是「层级挂载」的（123 的 text DOM 挂在 span 的 DOM 下，
 // span 的 DOM 挂在 div 的 DOM 下），递归查找时会「跳过非 Host 类型节点，但不会重复插入已挂载的子 DOM」
-function appendAllChildren(parent: Container, wip: FiberNode) {
+function appendAllChildren(parent: Container | Instance, wip: FiberNode) {
 	let node = wip.child;
 
 	while (node !== null) {

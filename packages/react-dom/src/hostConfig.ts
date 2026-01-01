@@ -36,6 +36,8 @@ export function commitUpdate(fiber: FiberNode) {
 			// 更新后的content(文本内容)
 			const text = fiber.memoizedProps.content;
 			return commitTextUpdate(fiber.stateNode, text);
+		case HostComponent:
+			return updateFiberProps(fiber.stateNode, fiber.memoizedProps);
 		default:
 			if (__DEV__) {
 				console.warn('未实现的Update类型', fiber);
