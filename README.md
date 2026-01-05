@@ -1655,3 +1655,163 @@ module.exports = {
 3. 工作过程中产生更高/低优先级的work
 
 把握一个原则：我们每次选出的都是优先级最高的work。
+
+## 18.实现并发更新
+
+要实现并发更新，需要做的改动包括：
+
+- Lane模型增加更多优先级
+
+- 交互与优先级对应
+
+- 调度阶段引入Scheduler，新增调度策略逻辑
+
+- render阶段可中断
+
+- 根据update计算state的算法需要修改
+
+### 18.1 扩展交互
+思考一个问题：优先级从何而来？
+
+> 答案：不同交互对应不同优先级。
+
+可以根据「触发更新的上下文环境」赋予不同优先级。比如：
+
+- 点击事件需要同步处理
+
+- 滚动事件优先级再低点
+
+- ...
+
+更进一步，还能推广到任何「可以触发更新的上下文环境」，比如：
+
+- useEffect create回调中触发更新的优先级
+
+- 首屏渲染的优先级
+
+下个问题：这些优先级的改动如何影响更新？
+
+> 答案：只要优先级能影响update，就能影响更新。
+
+当前我们掌握的与优先级相关的信息，包括：
+- Scheduler的5种优先级
+
+- React中的Lane模型
+
+也就是说，运行流程在React时，使用的是Lane模型，运行流程在Scheduler时，使用的是优先级。所以需要实现两者的转换：
+
+- lanesToSchedulerPriority
+
+- schedulerPriorityToLane
+
+
+### 18.2 扩展调度阶段
+主要是在同步更新（微任务调度）的基础上扩展并发更新（Scheduler调度），主要包括：
+
+- 将Demo中的调度策略移到项目中
+
+- render阶段变为「可中断」
+
+梳理两种典型场景：
+
+- 时间切片
+
+- 高优先级更新打断低优先级更新
+
+### 18.3 扩展state计算机制
+扩展「根据lane对应update计算state」的机制，主要包括：
+
+- 通过update计算state时可以跳过「优先级不够的update」
+
+- 由于「高优先级任务打断低优先级任务」，同一个组件中「根据update计算state」的流程可能会多次执行，所以需要保存update
+
+1. 跳过update需要考虑的问题
+
+如何比较「优先级是否足够」？
+
+> lane数值大小的直接比较不够灵活。
+
+如何同时兼顾「update的连续性」与「update的优先级」？
+
+```js
+// u0
+{
+  action: num => num + 1,
+  lane: DefaultLane
+}
+// u1
+{
+  action: 3,
+  lane: SyncLane
+}
+// u2
+{
+  action: num => num + 10,
+  lane: DefaultLane
+}
+
+// state = 0; updateLane = DefaultLane
+// 只考虑优先级情况下的结果：11
+// 只考虑连续性情况下的结果：13
+```
+
+新增baseState、baseQueue字段：
+
+- baseState是本次更新参与计算的初始state，memoizedState是上次更新计算的最终state
+
+- 如果本次更新没有update被跳过，则下次更新开始时baseState === memoizedState
+
+- 如果本次更新有update被跳过，则本次更新计算出的memoizedState为「考虑优先级」情况下计算的结果，baseState为「最后一个没被跳过的update计算后的结果」，下次更新开始时baseState !== memoizedState
+
+- 本次更新「被跳过的update及其后面的所有update」都会被保存在baseQueue中参与下次state计算
+
+- 本次更新「参与计算但保存在baseQueue中的update」，优先级会降低到NoLane
+
+```js
+// u0
+{
+  action: num => num + 1,
+  lane: DefaultLane
+}
+// u1
+{
+  action: 3,
+  lane: SyncLane
+}
+// u2
+{
+  action: num => num + 10,
+  lane: DefaultLane
+}
+
+/*
+* 第一次render
+* baseState = 0; memoizedState = 0;
+* baseQueue = null; updateLane = DefaultLane;
+* 第一次render 第一次计算
+* baseState = 1; memoizedState = 1;
+* baseQueue = null;
+* 第一次render 第二次计算
+* baseState = 1; memoizedState = 1;
+* baseQueue = u1;
+* 第一次render 第三次计算
+* baseState = 1; memoizedState = 11;
+* baseQueue = u1 -> u2(NoLane);
+*/
+
+/*
+* 第二次render
+* baseState = 1; memoizedState = 11;
+* baseQueue = u1 -> u2(NoLane); updateLane = SyncLane
+* 第二次render 第一次计算
+* baseState = 3; memoizedState = 3;
+* 第二次render 第二次计算
+* baseState = 13; memoizedState = 13;
+*/
+```
+
+### 18.4 保存update的问题
+考虑将update保存在current中。只要不进入commit阶段，current与wip不会互换，所以保存在current中，即使多次执行render阶段，只要不进入commit阶段，都能从current中恢复数据。
+
+### 18.5 课后思考
+TODO：扩展renderLane的灵活性，将其扩展为renderLanes，更好利用Lanes这一数据机构能够表示多种lane的集合的能力。

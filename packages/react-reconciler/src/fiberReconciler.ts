@@ -25,6 +25,7 @@ export function updateContainer(
 	root: FiberRootNode
 ) {
 	const hostRootFiber = root.current;
+	// 首屏渲染的优先级为NormalPriority
 	const lane = requestUpdateLane();
 	const update = createUpdate<ReactElementType | null>(element, lane);
 	enqueueUpdate(
