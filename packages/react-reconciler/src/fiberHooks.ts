@@ -17,6 +17,7 @@ import { scheduleUpdateOnFiber } from './workLoop';
 import { DefaultLane, Lane, NoLane, requestUpdateLane } from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
 import { HookHasEffect, Passive } from './hookEffectTags';
+import currentBatchConfig from 'react/src/currentBatchConfig';
 
 // 当前正在render的fiber
 let currentlyRenderingFiber: FiberNode | null = null;
@@ -101,13 +102,15 @@ export function renderWithHooks(wip: FiberNode, lane: Lane) {
 // mount时hook的实现
 const HooksDispatcherOnMount: Dispatcher = {
 	useState: mountState,
-	useEffect: mountEffect
+	useEffect: mountEffect,
+	useTransition: mountTransition
 };
 
 // update时hook的实现
 const HooksDispatcherOnUpdate: Dispatcher = {
 	useState: updateState,
-	useEffect: updateEffect
+	useEffect: updateEffect,
+	useTransition: updateTransition
 };
 
 function mountEffect(create: EffectCallback | void, deps: EffectDeps | void) {
@@ -253,17 +256,17 @@ function updateState<State>(): [State, Dispatch<State>] {
 		// 保存在current中
 		current.baseQueue = pending;
 		queue.shared.pending = null;
+	}
 
-		if (baseQueue !== null) {
-			const {
-				memoizedState,
-				baseQueue: newBaseQueue,
-				baseState: newBaseState
-			} = processUpdateQueue(baseState, baseQueue, renderLane);
-			hook.memoizedState = memoizedState;
-			hook.baseState = newBaseState;
-			hook.baseQueue = newBaseQueue;
-		}
+	if (baseQueue !== null) {
+		const {
+			memoizedState,
+			baseQueue: newBaseQueue,
+			baseState: newBaseState
+		} = processUpdateQueue(baseState, baseQueue, renderLane);
+		hook.memoizedState = memoizedState;
+		hook.baseState = newBaseState;
+		hook.baseQueue = newBaseQueue;
 	}
 
 	return [hook.memoizedState, queue.dispatch as Dispatch<State>];
@@ -340,6 +343,7 @@ function mountState<State>(
 	const queue = createUpdateQueue<State>();
 	hook.updateQueue = queue;
 	hook.memoizedState = memoizedState;
+	hook.baseState = memoizedState;
 
 	/**
 	 * * 这里为何使用bind? 我们把dispatch赋值给window，然后在其他地方使用这个方法也是可以的，因为dispatchSetState保存了fc的fiber节点
@@ -353,6 +357,33 @@ function mountState<State>(
 	const dispatch = dispatchSetState.bind(null, currentlyRenderingFiber, queue);
 	queue.dispatch = dispatch;
 	return [memoizedState, dispatch];
+}
+
+function mountTransition(): [boolean, (callback: () => void) => void] {
+	const [isPending, setPending] = mountState(false);
+	const hook = mountWorkInProgresHook();
+	const start = startTransition.bind(null, setPending);
+	hook.memoizedState = start;
+	return [isPending, start];
+}
+
+// boolean: 是否在pending中
+function updateTransition(): [boolean, (callback: () => void) => void] {
+	const [isPending] = updateState();
+	const hook = updateWorkInProgresHook();
+	const start = hook.memoizedState;
+	return [isPending as boolean, start];
+}
+
+function startTransition(setPending: Dispatch<boolean>, callback: () => void) {
+	setPending(true);
+	const prevTransition = currentBatchConfig.transition;
+	currentBatchConfig.transition = 1;
+
+	callback();
+	setPending(false);
+
+	currentBatchConfig.transition = prevTransition;
 }
 
 function dispatchSetState<State>(

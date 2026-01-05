@@ -1815,3 +1815,46 @@ module.exports = {
 
 ### 18.5 课后思考
 TODO：扩展renderLane的灵活性，将其扩展为renderLanes，更好利用Lanes这一数据机构能够表示多种lane的集合的能力。
+
+## 19.实现useTransition
+当前我们的并发策略是：默认启用并发更新。
+
+修改并发策略为：
+
+- 默认启用同步更新
+- 使用并发特性后的那次更新启用并发更新
+
+「默认启用同步更新」需要修改的地方：
+
+- mount时的更新优先级
+
+### 19.1 useTransition的作用
+执行过渡效果时（假设从UI a过渡到UI b），通常处理逻辑包括3个状态：
+
+- 初始情况是UI a
+- 开启过渡后，显示过渡中（比如loading）效果
+- 过渡完成后切换到UI b
+
+传统「过渡中」效果的弊端：
+
+- 时间比较短时，「过渡中效果」可能比较生硬
+- 「加载过程阻塞UI」也会带来不好的UX
+
+useTransition就是为了解决这个问题，他的作用是：切换UI时，先显示旧的UI，待新的UI加载完成后再显示新的UI。
+
+> <a href="https://beta.reactjs.org/reference/react/useTransition">useTransition文档中的例子</a>
+
+
+### 19.2 实现useTransition
+useTransition的作用翻译成源码术语：
+
+- 切换UI -> 触发更新
+- 先显示旧的UI，待新的UI加载完成后再显示新的UI -> 「切换新UI」对应低优先级更新
+
+实现的要点：
+
+1. 实现基础hook工作流程
+2. 实现Transition优先级
+3. useTransition的实现细节
+
+![alt text](./assets/useTransition.png)
