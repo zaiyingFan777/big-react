@@ -1858,3 +1858,44 @@ useTransition的作用翻译成源码术语：
 3. useTransition的实现细节
 
 ![alt text](./assets/useTransition.png)
+
+## 20.实现useRef
+需要完成的工作：
+
+- 实现Ref数据结构
+- 实现Ref工作流程
+
+### 20.1 Ref数据结构
+Ref存在3种数据结构：
+
+- string（已经废弃）
+- (instance: T) => void
+```jsx
+<div ref={dom => console.log(dom)}></div>
+```
+- {current: T}
+```jsx
+<div ref={domRef}></div>
+```
+
+### 20.2 HostComponent Ref工作流程
+1. 标记Ref
+
+标记Ref需要满足：
+- mount时：存在ref
+- update时：ref引用变化
+
+标记的时机包括：
+- beginWork
+- completeWork
+
+2. 执行Ref操作
+
+包括两类操作：
+
+2.1. 对于正常的绑定操作：
+- 解绑之前的ref（mutation阶段）
+- 绑定新的ref（layout阶段）
+
+2.2. 对于组件卸载：
+- 解绑之前的ref
