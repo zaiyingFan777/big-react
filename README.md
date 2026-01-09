@@ -1899,3 +1899,119 @@ Ref存在3种数据结构：
 
 2.2. 对于组件卸载：
 - 解绑之前的ref
+
+
+## 21.实现useContext
+```jsx
+const ctx = createContext(0);
+
+function App() {
+  return (
+    <ctx.Provider value={1}>
+        <div>
+          <Middle />
+        </div>
+    </ctx.Provider>
+  );
+}
+
+class Middle extends Component {
+    shouldComponentUpdate() {
+        return true;
+    }
+    render() {
+        return <Child />;
+    }
+}
+
+function Child() {
+  const val = useContext(ctx);
+  return <p>{val}</p>;
+}
+```
+
+### 21.1 context相关实现细节：
+- Context的创建（createContext的返回值）
+- Context的逻辑
+- Context的消费（useContext实现）
+
+### 21.2 Context的创建
+
+```jsx
+type ReactContext<T> = {
+  $$typeof: symbol | number;
+  Provider: ReactProviderType<T> | null;
+  _currentValue: T;
+};
+```
+
+### 21.2 Context的逻辑
+需要实现两部分内容：
+
+- 对ContextProvider类型FiberNode的支持
+- Context逻辑的实现
+
+### 21.3 context逻辑的实现
+
+1. 支持context._currentValue的变化
+
+```jsx
+const ctx = createContext(0);
+
+<ctx.Provider value={1}>
+  <Cpn />
+</ctx.Provider>
+<Cpn />
+```
+
+2. 嵌套的context
+
+```jsx
+<ctx.Provider value={0}>
+  <Cpn />
+  <ctx.Provider value={1}>
+    <Cpn />
+    <ctx.Provider value={2}>
+      <Cpn />
+    </ctx.Provider>
+  </ctx.Provider>
+</ctx.Provider>
+```
+
+Q：不同类型context的嵌套会有问题么？
+
+```jsx
+<ctxA.Provider value={'a0'}>
+  <ctxB.Provider value={'b0'}>
+    <ctxA.Provider value={'a1'}>
+      <Cpn />
+    </ctxA.Provider>
+     <Cpn />
+  </ctxB.Provider>
+</ctxA.Provider>
+```
+
+A：不会。因为JSX结构固定意味着：
+
+- Provider beginWork与completeWork一一对应
+- prevContextValue的值跟随栈而变化
+
+### 21.4 Context的消费
+需要考虑：
+
+- 从context取值
+
+### 21.5 两个需要注意的点
+1. React性能优化造成的影响
+
+上述例子中，如果shouldComponentUpdate为false，如何感知子孙组件中有Context Consumer？
+
+![alt text](./assets/context-1.png)
+
+从Context Provider的beginWork开始向下遍历寻找Context Consumer：
+
+![alt text](./assets/context-2.png)
+
+但是在我们的实现中，还没实现bailout，所以实现context不需要考虑这种情况。
+
+2. useContext没有其他hook的限制
