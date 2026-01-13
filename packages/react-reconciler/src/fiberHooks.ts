@@ -3,7 +3,7 @@
 import { Dispatch } from 'react/src/currentDispatcher';
 import { Dispatcher } from 'react/src/currentDispatcher';
 import internals from 'shared/internals';
-import { Action, ReactContext } from 'shared/ReactTypes';
+import { Action, ReactContext, Thenable, Usable } from 'shared/ReactTypes';
 import { FiberNode } from './fiber';
 import {
 	createUpdate,
@@ -18,6 +18,8 @@ import { DefaultLane, Lane, NoLane, requestUpdateLane } from './fiberLanes';
 import { Flags, PassiveEffect } from './fiberFlags';
 import { HookHasEffect, Passive } from './hookEffectTags';
 import currentBatchConfig from 'react/src/currentBatchConfig';
+import { REACT_CONTEXT_TYPE } from 'shared/ReactSymbols';
+import { trackUsedThenable } from './thenable';
 
 // 当前正在render的fiber
 let currentlyRenderingFiber: FiberNode | null = null;
@@ -105,7 +107,8 @@ const HooksDispatcherOnMount: Dispatcher = {
 	useEffect: mountEffect,
 	useTransition: mountTransition,
 	useRef: mountRef,
-	useContext: readContext
+	useContext: readContext,
+	use
 };
 
 // update时hook的实现
@@ -114,8 +117,29 @@ const HooksDispatcherOnUpdate: Dispatcher = {
 	useEffect: updateEffect,
 	useTransition: updateTransition,
 	useRef: updateRef,
-	useContext: readContext
+	useContext: readContext,
+	use
 };
+
+function use<T>(usable: Usable<T>): T {
+	if (usable !== null && typeof usable === 'object') {
+		// typeof (usable as Thenable<T>).then === 'function': 具有 .then 方法的对象
+		if (typeof (usable as Thenable<T>).then === 'function') {
+			const thenable = usable as Thenable<T>;
+			return trackUsedThenable(thenable);
+		} else if ((usable as ReactContext<T>).$$typeof === REACT_CONTEXT_TYPE) {
+			const context = usable as ReactContext<T>;
+			return readContext(context);
+		}
+	}
+	throw new Error('不支持的use参数 ' + usable);
+}
+
+export function resetHooksOnUnwind(wip: FiberNode) {
+	currentlyRenderingFiber = null;
+	currentHook = null;
+	workInProgressHook = null;
+}
 
 function readContext<T>(context: ReactContext<T>): T {
 	const consumer = currentlyRenderingFiber;

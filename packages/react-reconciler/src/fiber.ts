@@ -1,9 +1,11 @@
-import { Props, Key, Ref, ReactElementType } from 'shared/ReactTypes';
+import { Props, Key, Ref, ReactElementType, Wakeable } from 'shared/ReactTypes';
 import {
 	ContextProvider,
 	Fragment,
 	FunctionComponent,
 	HostComponent,
+	OffscreenComponent,
+	SuspenseComponent,
 	WorkTag
 } from './workTags';
 import { Flags, NoFlags } from './fiberFlags';
@@ -11,7 +13,7 @@ import { Container } from 'hostConfig';
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
 import { CallbackNode } from 'scheduler';
-import { REACT_PROVIDER_TYPE } from 'shared/ReactSymbols';
+import { REACT_PROVIDER_TYPE, REACT_SUSPENSE_TYPE } from 'shared/ReactSymbols';
 
 export class FiberNode {
 	type: any;
@@ -19,7 +21,7 @@ export class FiberNode {
 	pendingProps: Props;
 	key: Key;
 	stateNode: any;
-	ref: Ref;
+	ref: Ref | null;
 
 	return: FiberNode | null;
 	sibling: FiberNode | null;
@@ -94,6 +96,15 @@ export class FiberRootNode {
 	finishedWork: FiberNode | null;
 	// 所有未更新的lane的集合
 	pendingLanes: Lanes;
+
+	// *
+	// 代表了当前root下所有被挂起的lane(更新)
+	// update造成了挂起，那么这次的lane就进入了suspendedLanes
+	suspendedLanes: Lanes;
+	// wakeable醒了，那么就把此次的lane保存在pingedLanes
+	// pingedLanes中的lane都是suspendedLanes的子集
+	pingedLanes: Lanes;
+
 	// 本次更新选出来的lane
 	finishedLane: Lane;
 	// 存放本次更新的需要执行的effect的副作用
@@ -102,6 +113,10 @@ export class FiberRootNode {
 	callbackNode: CallbackNode | null;
 	// 当前调度的优先级
 	callbackPriority: Lane;
+
+	// WeakMap{ wakeable: Set[lane1, lane2, ...]}
+	pingCache: WeakMap<Wakeable<any>, Set<Lane>> | null;
+
 	constructor(container: Container, hostRootFiber: FiberNode) {
 		this.container = container;
 		this.current = hostRootFiber;
@@ -111,6 +126,9 @@ export class FiberRootNode {
 		this.pendingLanes = NoLanes;
 		this.finishedLane = NoLane;
 
+		this.suspendedLanes = NoLanes;
+		this.pingedLanes = NoLanes;
+
 		this.callbackNode = null;
 		this.callbackPriority = NoLane;
 
@@ -118,6 +136,8 @@ export class FiberRootNode {
 			unmount: [],
 			update: []
 		};
+
+		this.pingCache = null;
 	}
 }
 
@@ -170,6 +190,8 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 		type.$$typeof === REACT_PROVIDER_TYPE
 	) {
 		fiberTag = ContextProvider;
+	} else if (type === REACT_SUSPENSE_TYPE) {
+		fiberTag = SuspenseComponent;
 	} else if (typeof type !== 'function' && __DEV__) {
 		console.warn('为定义的type类型', element);
 	}
@@ -182,5 +204,16 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 // 创建Fragment fiber
 export function createFiberFromFragment(elements: any[], key: Key): FiberNode {
 	const fiber = new FiberNode(Fragment, elements, key);
+	return fiber;
+}
+
+export interface OffscreenProps {
+	mode: 'visible' | 'hidden';
+	children: any;
+}
+
+export function createFiberFromOffscreen(pendingProps: OffscreenProps) {
+	const fiber = new FiberNode(OffscreenComponent, pendingProps, null);
+	// TODO stateNode
 	return fiber;
 }

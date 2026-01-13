@@ -47,6 +47,9 @@ export function isSubsetOfLanes(set: Lanes, subset: Lane) {
 
 export function markRootFinished(root: FiberRootNode, lane: Lane) {
 	root.pendingLanes &= ~lane;
+
+	root.suspendedLanes = NoLanes;
+	root.pingedLanes = NoLanes;
 }
 
 export function lanesToSchedulerPriority(lanes: Lanes) {
@@ -75,4 +78,43 @@ export function schedulerPriorityToLane(schedulerPriority: number): Lane {
 		return DefaultLane;
 	}
 	return NoLane;
+}
+
+// 标记某个lane被ping了
+export function markRootPinged(root: FiberRootNode, pingedLane: Lane) {
+	// 取root.suspendedLanes & pingedLane的交集（pingedLane属于suspendedLanes的子集）
+	root.pingedLanes |= root.suspendedLanes & pingedLane;
+}
+
+// 标记某个lane被挂起了
+export function markRootSuspended(root: FiberRootNode, suspendedLane: Lane) {
+	// 添加
+	root.suspendedLanes |= suspendedLane;
+	// 移除
+	root.pingedLanes &= ~suspendedLane;
+}
+
+// 由于最高优先级已经被挂起，因此我们获取Pending lane中没有被挂起的最高的优先级
+// 或者说获取即使已经被挂起，但是被ping的lane
+export function getNextLane(root: FiberRootNode): Lane {
+	const pendingLanes = root.pendingLanes;
+
+	if (pendingLanes === NoLanes) {
+		return NoLane;
+	}
+	let nextLane = NoLane;
+
+	// 取pendinglanes中没有被挂起的lane
+	// ~root.suspendedLanes代表没有被挂起的lane
+	const suspendedLanes = pendingLanes & ~root.suspendedLanes;
+	if (suspendedLanes !== NoLanes) {
+		nextLane = getHighestPriorityLane(suspendedLanes);
+	} else {
+		// 所有的pendinglane都被挂起了，但是有的lane可能被ping了
+		const pingedLanes = pendingLanes & root.pingedLanes;
+		if (pingedLanes !== NoLanes) {
+			nextLane = getHighestPriorityLane(pingedLanes);
+		}
+	}
+	return nextLane;
 }

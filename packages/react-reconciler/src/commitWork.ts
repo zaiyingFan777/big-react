@@ -2,9 +2,13 @@ import {
 	appendChildToContainer,
 	commitUpdate,
 	Container,
+	hideInstance,
+	hideTextInstance,
 	insertChildToContainer,
 	Instance,
-	removeChild
+	removeChild,
+	unhideInstance,
+	unhideTextInstance
 } from 'hostConfig';
 import { FiberNode, FiberRootNode, PendingPassiveEffects } from './fiber';
 import {
@@ -17,13 +21,15 @@ import {
 	PassiveMask,
 	Placement,
 	Ref,
-	Update
+	Update,
+	Visibility
 } from './fiberFlags';
 import {
 	FunctionComponent,
 	HostComponent,
 	HostRoot,
-	HostText
+	HostText,
+	OffscreenComponent
 } from './workTags';
 import { Effect, FCUpdateQueue } from './fiberHooks';
 import { HookHasEffect } from './hookEffectTags';
@@ -139,6 +145,14 @@ const commitMutaitonEffectsOnFiber = (
 	if ((flags & Ref) !== NoFlags && tag == HostComponent) {
 		safelyDetachRef(finishedWork);
 	}
+
+	// suspense -> OffscreenComponent
+	if ((flags & Visibility) !== NoFlags && tag === OffscreenComponent) {
+		const isHidden = finishedWork.pendingProps.mode === 'hidden';
+		// 需要找到所有子树顶层host节点，并将这个host节点标记display: none、或去掉display: none
+		hideOrUnhideAllChildren(finishedWork, isHidden);
+		finishedWork.flags &= ~Visibility;
+	}
 };
 
 const commitLayoutEffectsOnFiber = (
@@ -153,6 +167,80 @@ const commitLayoutEffectsOnFiber = (
 		finishedWork.flags &= ~Ref;
 	}
 };
+
+// 寻找根host节点，考虑到Fragment，可能存在多个
+// 向下深度优先遍历的过程，找到了顶层host节点，再去找其他的顶层host节点
+function findHostSubtreeRoot(
+	finishedWork: FiberNode,
+	callback: (hostSubtreeRoot: FiberNode) => void
+) {
+	let hostSubtreeRoot = null;
+	let node = finishedWork;
+	while (true) {
+		if (node.tag === HostComponent) {
+			if (hostSubtreeRoot === null) {
+				// 还未发现 root，当前就是
+				hostSubtreeRoot = node;
+				callback(node);
+			}
+		} else if (node.tag === HostText) {
+			if (hostSubtreeRoot === null) {
+				// 还未发现 root，text可以是顶层节点
+				callback(node);
+			}
+		} else if (
+			node.tag === OffscreenComponent &&
+			node.pendingProps.mode === 'hidden' &&
+			node !== finishedWork
+		) {
+			// 隐藏的OffscreenComponent跳过
+			// Suspense嵌套Suspense，由自己的Suspense自己去处理
+		} else if (node.child !== null) {
+			node.child.return = node;
+			node = node.child;
+			continue;
+		}
+
+		if (node === finishedWork) {
+			return;
+		}
+
+		while (node.sibling === null) {
+			if (node.return === null || node.return === finishedWork) {
+				return;
+			}
+
+			if (hostSubtreeRoot === node) {
+				hostSubtreeRoot = null;
+			}
+			// 向上归
+			node = node.return;
+		}
+
+		// 去兄弟节点寻找，此时当前子树的host root可以移除了
+		if (hostSubtreeRoot === node) {
+			hostSubtreeRoot = null;
+		}
+
+		node.sibling.return = node.return;
+		node = node.sibling;
+	}
+}
+
+// 找到所有子树的顶层的host类型节点，并隐藏或展示
+// 可能有多个host节点
+function hideOrUnhideAllChildren(finishedWork: FiberNode, isHidden: boolean) {
+	findHostSubtreeRoot(finishedWork, (hostRoot) => {
+		const instance = hostRoot.stateNode;
+		if (hostRoot.tag === HostComponent) {
+			isHidden ? hideInstance(instance) : unhideInstance(instance);
+		} else if (hostRoot.tag === HostText) {
+			isHidden
+				? hideTextInstance(instance)
+				: unhideTextInstance(instance, hostRoot.memoizedProps.content);
+		}
+	});
+}
 
 // 解绑ref
 const safelyAttachRef = (finishedWork: FiberNode) => {

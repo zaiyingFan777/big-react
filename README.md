@@ -2015,3 +2015,156 @@ A：不会。因为JSX结构固定意味着：
 但是在我们的实现中，还没实现bailout，所以实现context不需要考虑这种情况。
 
 2. useContext没有其他hook的限制
+
+## 22. 实现Suspense
+本节课的目标：了解·Suspense·的实现原理及后续扩展思路，而不是「实现全功能的Suspense」
+
+在React中，与Suspense相关的特性：
+
+1. Lazy 组件
+
+2. transition fallback（比如 useTransition）
+
+3. use
+
+4. Offscreen 组件
+
+5. Selective Hydration
+
+6. RSC（React Server Component）
+
+### 22.1 Suspense的架构
+Demo：
+
+```jsx
+<Suspense fallback={<div>loading...</div>}>
+  <Cpn/>
+</Suspense>
+```
+- 正常状态，<Suspense/>渲染子孙组件
+
+- 挂起状态，<Suspense/>渲染fallback
+
+其中，造成挂起状态的原因有很多，比如：
+
+- <Cpn/>或其子孙是懒加载组件（Lazy文档）
+
+- <Cpn/>或其子孙触发并发更新（useTransition）
+
+- <Cpn/>或其子孙是Selective Hydration
+
+- <Cpn/>或其子孙使用use请求数据
+
+总结：凡是涉及 「初始状态」 -> 「中间状态」 -> 「结束状态」 的流程，都可以纳入<Suspense/>
+
+### 22.2 Suspense实现思路
+1. 思路一：只有一个child
+![alt text](./assets/suspense-1.png)
+缺点：
+
+- 无法保存children对应状态
+
+- 切换后children对应DOM需要完全销毁
+
+2. 思路二：有两个child
+
+beginWork时有选择的返回其中一个child，但另一个child也存在于fiber树中：
+![alt text](./assets/suspense-2.png)
+> Offscreen可以用来实现Keep-Alive
+
+对于下面的代码，一共存在4种流程：
+
+```jsx
+<Suspense fallback={<div>loading...</div>}>
+    <Cpn/>
+</Suspense>
+```
+1. mount时正常流程（对应方法mountSuspensePrimaryChildren）
+
+2. update时正常流程（对应方法updateSuspensePrimaryChildren）
+
+3. mount时挂起流程（对应方法mountSuspenseFallbackChildren）
+
+4. update时挂起流程（对应方法updateSuspenseFallbackChildren）
+
+### 22.3 Suspense工作流程
+1. beginWork时进入上述任一流程
+
+2. completeWork时对比current Offscreen mode与wip Offscreen mode，如果发现下述情况，则标记Visibility effectTag：
+
+- mode从hidden变为visible
+
+- mode``从visible变为hidden
+
+- current === null && hidden
+
+3. commitWork时处理Visibility effectTag，处理Visibility effectTag时需要找到所有子树顶层Host节点：
+
+```jsx
+function Cpn() {
+  return (
+    <p>123</p>
+  )
+}
+
+情况1，一个host节点：
+<Suspense fallback={<div>loading...</div>}>
+  <Cpn/>
+</Suspense>
+
+情况2，多个host节点：
+<Suspense fallback={<div>loading...</div>}>
+  <Cpn/>
+  <div>
+    <p>你好</p>
+  </div>
+</Suspense>
+```
+
+### 22.4 如何触发Suspense？
+思考一个问题：上述4种流程是在「不同更新触发的render流程」中出现的么？
+
+对于demo中的例子，经历了：
+
+1. 正常流程对应render阶段
+
+2. 遇到use，进入挂起流程
+
+3. 进入挂起流程对应render阶段
+
+4. 进入挂起流程对应commit阶段（渲染loading）
+
+5. 请求返回后，进入正常流程对应render阶段
+
+6. 进入正常流程对应commit阶段（渲染Cpn）
+
+Suspense涉及到render阶段的一个新流程 —— unwind流程
+
+总结学到的三种流程：
+
+- beginWork：往下深度优先遍历
+
+- completeWork：往上深度优先遍历
+
+- unwind：往上遍历祖辈
+
+Demo中的unwind流程：
+![alt text](./assets/suspense-3.png)
+
+数据返回后的正常流程：
+![alt text](./assets/suspense-4.png)
+
+涉及到unwind流程的特性：
+
+- Suspense
+- Error Boundary
+
+### 22.5 实现use hook与unwind流程
+use可以接收的数据类型：
+
+- Thenable
+- ReactContext
+
+unwind流程如何进行到最近的Suspense？
+
+![alt text](image.png)
