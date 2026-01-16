@@ -15,10 +15,12 @@ import {
 	Fragment,
 	ContextProvider,
 	SuspenseComponent,
-	OffscreenComponent
+	OffscreenComponent,
+	MemoComponent
 } from './workTags';
 import { popProvider } from './fiberContext';
 import { popSuspenseHandler } from './suspenseContext';
+import { mergeLanes, NoLanes } from './fiberLanes';
 
 // 标记ref
 function markRef(fiber: FiberNode) {
@@ -95,6 +97,7 @@ export const completeWork = (wip: FiberNode) => {
 		case FunctionComponent:
 		case Fragment:
 		case OffscreenComponent:
+		case MemoComponent:
 			bubbleProperties(wip);
 			return null;
 		case ContextProvider:
@@ -182,14 +185,23 @@ function bubbleProperties(wip: FiberNode) {
 	let subtreeFlags = NoFlags;
 	let child = wip.child;
 
+	let newChildLanes = NoLanes;
+
 	while (child !== null) {
 		// 当前节点子节点的subtreeFlags
 		subtreeFlags |= child.subtreeFlags;
 		// 当前节点子节点的flags
 		subtreeFlags |= child.flags;
 
+		// child.lanes child.childLanes
+		newChildLanes = mergeLanes(
+			newChildLanes,
+			mergeLanes(child.lanes, child.childLanes)
+		);
+
 		child.return = wip;
 		child = child.sibling;
 	}
 	wip.subtreeFlags |= subtreeFlags;
+	wip.childLanes = newChildLanes;
 }

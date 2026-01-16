@@ -2167,4 +2167,133 @@ use可以接收的数据类型：
 
 unwind流程如何进行到最近的Suspense？
 
-![alt text](image.png)
+![alt text](./assets/suspense-5.png)
+
+
+## 23.实现性能优化策略
+
+### 23.1 性能优化的一般思路
+性能优化的一般思路：将「变化的部分」与「不变的部分」分离
+
+什么是「变化的部分」？
+
+- State
+- Props
+- Context
+
+命中「性能优化」的组件可以不通过reconcile生成wip.child，而是直接复用上次更新生成的wip.child。
+
+总结起来有两点：
+
+- 性能优化的思路是将「变化的部分」与「不变的部分」分离
+
+- 命中性能优化的组件的子组件（而不是他本身）不需要render
+
+![alt text](./assets/performance-optimization-1.png)
+
+### 23.2 源码内部有哪些性能优化策略？
+
+```jsx
+function App() {
+  const [num, update] = useState(0);
+  console.log("App render ", num);
+
+  return (
+    <div onClick={() => update(1)}>
+      <Cpn />
+    </div>
+  );
+}
+
+function Cpn() {
+  console.log("cpn render");
+  return <div>cpn</div>;
+}
+```
+<a href="https://codesandbox.io/p/sandbox/performance-2yqt23">在线示例地址</a>
+
+对于上述例子，存在两种性能优化策略：
+
+1. bailout策略：减少不必要的子组件render
+
+2. eagerState策略：不必要的更新，没必要开启后续调度流程
+
+
+### 23.3 bailout策略
+命中「性能优化」（bailout策略）的组件可以不通过reconcile生成wip.child，而是直接复用上次更新生成的wip.child。
+
+bailout策略存在于beginWork中
+
+bailout四要素：
+
+1. props不变
+比较props变化是通过「全等比较」，使用React.memo后会变为「浅比较」
+
+2. state不变
+两种情况可能造成state不变：
+
+  - 不存在update
+  - 存在update，但计算得出的state没变化
+3. context不变
+
+4. type不变
+
+如果Div变为P，返回值肯定变了
+
+![alt text](./assets/performance-optimization-2.png)
+
+为了判断「bailout四要素」中的「state不变」，需要判断当前fiber是否存在未执行的update。
+
+### 23.4 fiber.lanes工作流程
+作用：保存一个fiberNode中「所有未执行更新对应的lane」
+
+延伸功能：fiber.childLanes，保存一个fiberNode子树中「所有未执行更新对应的lane」
+
+- 产生：enqueueUpdate
+
+- 消费：beginWork
+
+- 未消费时的重置：processUpdateQueue
+
+### 23.5 eagerState策略
+状态更新前后没有变化，那么没有必要触发更新，为此需要做：
+
+1. 计算更新后的状态
+
+2. 与更新前的状态做比较
+
+通常情况下，「根据update计算state」发生在beginWork，而我们需要在「触发更新时」计算状态：
+
+![alt text](./assets/performance-optimization-3.png)
+
+只有满足「当前fiberNode没有其他更新」才尝试进入eagerState策略。
+
+### 23.6 实现React.memo
+> demo：performance/memo.tsx
+
+作用：让「props的全等比较」变为「props的浅比较」
+
+本质：在子组件与父组件之间增加一个MemoComponent，MemoComponent通过「props的浅比较」命中bailout策略
+
+![alt text](./assets/performance-optimization-4.png)
+
+### 23.7 实现useMemo、useCallback
+> demo：performance/Hook.tsx
+
+> demo：performance/useMemo.tsx
+
+- useCallback：缓存函数
+
+- useMemo：缓存变量（特殊用法：手动bailout）
+
+### 23.8 context兼容bailout的实现
+Q：不触发context更新的原因？
+
+A：命中了bailout策略
+
+Q：在context场景下，如何才能不命中bailout策略？
+
+A：在context场景下，可以提前标记从ctx.Provider到consumer之间的childLanes
+![alt text](./assets/performance-optimization-5.png)
+
+注意：比较state变化的第二种情况「有新的update，但是经过计算后发现state没变」，在标记didReceiveUpdate时对于context也同样适用。

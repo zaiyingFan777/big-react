@@ -94,7 +94,7 @@ function prepareFreshStack(root: FiberRootNode, lane: Lane) {
 // 如果是this.setState，这个fiber肯定就是触发更新的class-component的fiber
 export function scheduleUpdateOnFiber(fiber: FiberNode, lane: Lane) {
 	// root: fiberRootNode
-	const root = markUpdateFromFiberToRoot(fiber);
+	const root = markUpdateLaneFromFiberToRoot(fiber, lane);
 	markRootUpdated(root, lane);
 	// * 调度功能
 	ensureRootIsScheduled(root);
@@ -163,12 +163,19 @@ export function markRootUpdated(root: FiberRootNode, lane: Lane) {
 }
 
 // 从fiber向上遍历到fiberRootNode
-function markUpdateFromFiberToRoot(fiber: FiberNode) {
+// 从当前fiber到fiberRootNode往上找的过程中，也需要冒泡lanes。将本次fiber节点出发的lane层层附加给父节点爷爷节点的childLanes上
+function markUpdateLaneFromFiberToRoot(fiber: FiberNode, lane: Lane) {
 	let node = fiber;
 	let parent = node.return;
 	while (parent !== null) {
+		parent.childLanes = mergeLanes(parent.childLanes, lane);
+		const alternate = parent.alternate;
+		if (alternate !== null) {
+			alternate.childLanes = mergeLanes(alternate.childLanes, lane);
+		}
+
 		node = parent;
-		parent = node.return;
+		parent = parent.return;
 	}
 	if (node.tag === HostRoot) {
 		return node.stateNode;

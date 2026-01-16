@@ -7,6 +7,7 @@ const PostsTab = function PostsTab() {
 };
 
 function SlowPost({ index }) {
+	console.log('SlowPost');
 	const startTime = performance.now();
 	while (performance.now() - startTime < 4) {}
 

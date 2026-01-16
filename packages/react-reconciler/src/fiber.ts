@@ -4,6 +4,7 @@ import {
 	Fragment,
 	FunctionComponent,
 	HostComponent,
+	MemoComponent,
 	OffscreenComponent,
 	SuspenseComponent,
 	WorkTag
@@ -13,7 +14,18 @@ import { Container } from 'hostConfig';
 import { Lane, Lanes, NoLane, NoLanes } from './fiberLanes';
 import { Effect } from './fiberHooks';
 import { CallbackNode } from 'scheduler';
-import { REACT_PROVIDER_TYPE, REACT_SUSPENSE_TYPE } from 'shared/ReactSymbols';
+import {
+	REACT_MEMO_TYPE,
+	REACT_PROVIDER_TYPE,
+	REACT_SUSPENSE_TYPE
+} from 'shared/ReactSymbols';
+import { ContextItem } from './fiberContext';
+
+// fiber.denpendencies保存函数组件依赖的context
+interface FiberDependencies<Value> {
+	firstContext: ContextItem<Value> | null;
+	lanes: Lanes; // 某个更新导致context.value发生变化，那么把本次更新添加到依赖中
+}
 
 export class FiberNode {
 	type: any;
@@ -35,6 +47,11 @@ export class FiberNode {
 	subtreeFlags: Flags;
 	updateQueue: unknown;
 	deletions: FiberNode[] | null;
+
+	lanes: Lanes;
+	childLanes: Lanes;
+
+	dependencies: FiberDependencies<any> | null;
 
 	constructor(tag: WorkTag, pendingProps: Props, key: Key) {
 		// 实例属性
@@ -79,6 +96,14 @@ export class FiberNode {
 		this.subtreeFlags = NoFlags;
 		// 父节点的数组结构，保存了父节点下需要被删除的子节点
 		this.deletions = null;
+
+		// * bailout
+		// 所有未执行更新对应的Lane
+		this.lanes = NoLanes;
+		// 保存一个fiberNode子树中「所有未执行更新对应的lane」
+		this.childLanes = NoLanes;
+
+		this.dependencies = null;
 	}
 }
 
@@ -175,6 +200,19 @@ export const createWorkInProgress = (
 
 	wip.ref = current.ref;
 
+	wip.lanes = current.lanes;
+	wip.childLanes = current.childLanes;
+
+	// 拷贝fiber的依赖项
+	const currentDeps = current.dependencies;
+	wip.dependencies =
+		currentDeps === null
+			? null
+			: {
+					lanes: currentDeps.lanes,
+					firstContext: currentDeps.firstContext
+			  };
+
 	return wip;
 };
 
@@ -185,11 +223,18 @@ export function createFiberFromElement(element: ReactElementType): FiberNode {
 	if (typeof type === 'string') {
 		// <div/> type: 'div'
 		fiberTag = HostComponent;
-	} else if (
-		typeof type === 'object' &&
-		type.$$typeof === REACT_PROVIDER_TYPE
-	) {
-		fiberTag = ContextProvider;
+	} else if (typeof type === 'object') {
+		switch (type.$$typeof) {
+			case REACT_PROVIDER_TYPE:
+				fiberTag = ContextProvider;
+				break;
+			case REACT_MEMO_TYPE:
+				fiberTag = MemoComponent;
+				break;
+			default:
+				console.warn('未定义的type类型', element);
+				break;
+		}
 	} else if (type === REACT_SUSPENSE_TYPE) {
 		fiberTag = SuspenseComponent;
 	} else if (typeof type !== 'function' && __DEV__) {

@@ -1,6 +1,7 @@
 import { Dispatch } from 'react/src/currentDispatcher';
 import { Action } from 'shared/ReactTypes';
-import { isSubsetOfLanes, Lane, NoLane } from './fiberLanes';
+import { isSubsetOfLanes, Lane, mergeLanes, NoLane } from './fiberLanes';
+import { FiberNode } from './fiber';
 
 // action
 // 1.state, this.setState({xx: 1})
@@ -9,17 +10,23 @@ export interface Update<State> {
 	action: Action<State>;
 	lane: Lane;
 	next: Update<any> | null;
+	hasEagerState: boolean;
+	eagerState: State | null;
 }
 
 // 创建update实例的方法
 export const createUpdate = <State>(
 	action: Action<State>,
-	lane: Lane
+	lane: Lane,
+	hasEagerState = false,
+	eagerState = null
 ): Update<State> => {
 	return {
 		action,
 		lane,
-		next: null
+		next: null,
+		hasEagerState,
+		eagerState
 	};
 };
 
@@ -44,7 +51,9 @@ export const createUpdateQueue = <State>() => {
 // 向updateQueue增加update
 export const enqueueUpdate = <State>(
 	updateQueue: UpdateQueue<State>,
-	update: Update<State>
+	update: Update<State>,
+	fiber: FiberNode,
+	lane: Lane
 ) => {
 	const pending = updateQueue.shared.pending;
 	if (pending === null) {
@@ -57,6 +66,13 @@ export const enqueueUpdate = <State>(
 		pending.next = update;
 	}
 	updateQueue.shared.pending = update;
+
+	fiber.lanes = mergeLanes(fiber.lanes, lane);
+	// 获取到current，给current.lanes也添加上本次更新的lane
+	const alternate = fiber.alternate;
+	if (alternate !== null) {
+		alternate.lanes = mergeLanes(alternate.lanes, lane);
+	}
 };
 
 // ! 之前通过update计算state的流程时不能跳过优先级不够的update
@@ -99,10 +115,24 @@ export const processUpdateQueue1 = <State>(
 	return result;
 };
 
+export function basicStateReducer<State>(
+	state: State,
+	action: Action<State>
+): State {
+	if (action instanceof Function) {
+		// baseState 1 update (x) => 4x -> memoizedState 4
+		return action(state);
+	} else {
+		// baseState 1 update 2 -> memoizedState 2
+		return action;
+	}
+}
+
 export const processUpdateQueue = <State>(
 	baseState: State,
 	pendingUpdate: Update<State> | null,
-	renderLane: Lane
+	renderLane: Lane,
+	onSkipUpdate?: <State>(update: Update<State>) => void // 当update被跳过时会执行这个函数
 ): {
 	memoizedState: State;
 	baseState: State;
@@ -129,6 +159,9 @@ export const processUpdateQueue = <State>(
 			if (!isSubsetOfLanes(renderLane, updateLane)) {
 				// 优先级不够 被跳过
 				const clone = createUpdate(pending.action, pending.lane);
+
+				onSkipUpdate?.(clone);
+
 				// 是不是第一个被跳过的
 				if (newBaseQueueFirst === null) {
 					// first u0 last = u0
@@ -151,12 +184,18 @@ export const processUpdateQueue = <State>(
 				}
 
 				const action = pending.action;
-				if (action instanceof Function) {
-					// baseState 1 update (x) => 4x -> memoizedState 4
-					newState = action(baseState);
+				// if (action instanceof Function) {
+				// 	// baseState 1 update (x) => 4x -> memoizedState 4
+				// 	newState = action(baseState);
+				// } else {
+				// 	// baseState 1 update 2 -> memoizedState 2
+				// 	newState = action;
+				// }
+
+				if (pending.hasEagerState) {
+					newState = pending.eagerState;
 				} else {
-					// baseState 1 update 2 -> memoizedState 2
-					newState = action;
+					newState = basicStateReducer(baseState, action);
 				}
 			}
 			pending = pending.next as Update<any>;

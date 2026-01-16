@@ -402,3 +402,25 @@ function updateFragment(
 
 export const reconcileChildFibers = ChildReconciler(true);
 export const mountChildFibers = ChildReconciler(false);
+
+// 克隆wip的child以及child.sibling
+export function cloneChildFibers(wip: FiberNode) {
+	// child  sibling
+	if (wip.child === null) {
+		return;
+	}
+	// 克隆wip.child
+	let currentChild = wip.child;
+	let newChild = createWorkInProgress(currentChild, currentChild.pendingProps);
+	wip.child = newChild;
+	newChild.return = wip;
+
+	while (currentChild.sibling !== null) {
+		currentChild = currentChild.sibling;
+		newChild = newChild.sibling = createWorkInProgress(
+			newChild,
+			newChild.pendingProps
+		);
+		newChild.return = wip;
+	}
+}
